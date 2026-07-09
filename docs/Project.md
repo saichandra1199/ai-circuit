@@ -14,7 +14,7 @@ The agent never modifies `train.py`. It only modifies configuration, reads metri
 
 ## 2. Two Workflows
 
-### Workflow 1 — Human Data Prep + Agent Trains (`run_human_agent.py`)
+### Human+Agent — Human Data Prep + Agent Trains (`run_human_agent.py`)
 
 ```
 Human:   raw data ──[preprocessing]──► data/ (train/val/test structure)
@@ -34,9 +34,9 @@ Human:   raw data ──[preprocessing]──► data/ (train/val/test structure
 
 Human handles all data decisions: class selection, stratified splitting, class weights, directory structure. Agent's job is purely optimization — receive a working pipeline, improve macro F1 through config changes.
 
-Edit `training_config.yaml` → **WORKFLOW 1** section (`paths.*`).
+Edit `training_config.yaml` → **HUMAN+AGENT** section (`paths.*`).
 
-### Workflow 2 — End-to-End Autonomous Agent (`run_full_agent.py`)
+### Full Agent — End-to-End Autonomous (`run_full_agent.py`)
 
 ```
 Agent:   raw_data/articles.csv + raw_data/images/
@@ -47,13 +47,13 @@ Agent:   raw_data/articles.csv + raw_data/images/
               │
          data/auto/  ←  agent-created structure
               │
-         Same agentic loop as Workflow 1
+         Same agentic loop as Human+Agent
          train → evaluate → notes → improve → repeat
 ```
 
 Agent receives only raw CSV + images. `data_prep_agent.py` handles everything data-related; then the identical training loop runs.
 
-Edit `training_config.yaml` → **WORKFLOW 2** section (`data_prep.*`). Optional: set `data_prep.instructions` to guide class selection.
+Edit `training_config.yaml` → **FULL AGENT** section (`data_prep.*`). Optional: set `data_prep.instructions` to guide class selection.
 
 ---
 
@@ -72,11 +72,11 @@ loss:           # type, label_smoothing, focal_gamma
 sampler:        # use_weighted
 augmentations:  # mixup, cutmix, randaugment, color_jitter, etc.
 
-# ══ WORKFLOW 1 ══
+# ══ HUMAN+AGENT ══
 paths:
   data_dir, class_mapping, class_weights, experiment_dir
 
-# ══ WORKFLOW 2 ══
+# ══ FULL AGENT ══
 data_prep:
   raw_data_dir, max_train_per_class, instructions
 ```
@@ -103,7 +103,7 @@ data/
 ├── class_weights.json
 └── class_mapping.json
 
-data/auto/              # Workflow 2 output (agent-created)
+data/auto/              # Full Agent output (agent-created)
 ├── train/val/test/<class>/
 ├── class_mapping_auto.json
 ├── class_weights_auto.json
@@ -345,7 +345,7 @@ Notes serve dual purpose: human-readable audit trail + LLM context for the impro
 
 ---
 
-## 11. Data Prep Agent (`agents/data_prep_agent.py`) — Workflow 2 only
+## 11. Data Prep Agent (`agents/data_prep_agent.py`) — Full Agent only
 
 Invoked by `run_full_agent.py` before the training loop.
 
@@ -366,10 +366,10 @@ Invoked by `run_full_agent.py` before the training loop.
 |---|---|
 | `train.py` | Config-driven training pipeline. Fixed — agent never modifies. |
 | `training_config.yaml` | Single config for both workflows. Three labelled sections. |
-| `run_human_agent.py` | Workflow 1 entry point. |
-| `run_full_agent.py` | Workflow 2 entry point (autonomous data prep + training). |
+| `run_human_agent.py` | Human+Agent entry point. |
+| `run_full_agent.py` | Full Agent entry point (autonomous data prep + training). |
 | `agents/training_agent.py` | LangGraph agent — full loop logic. |
-| `agents/data_prep_agent.py` | LLM-driven data prep for Workflow 2. |
+| `agents/data_prep_agent.py` | LLM-driven data prep for Full Agent only. |
 | `agents/prompts.py` | `IMPROVE_PROMPT` and `NOTES_PROMPT` templates. |
 | `utils/llm_api.py` | OpenAI chat wrapper. Model configurable via `agent.llm_model`. |
 | `utils/create_sample_data.py` | Creates `data/sample/` from raw data. |

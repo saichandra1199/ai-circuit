@@ -1,5 +1,5 @@
 """
-Workflow 2: Fully autonomous agent.
+Full Agent workflow: fully autonomous.
 LLM decides classes + data splits, then trains.
 """
 import argparse
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     data_prep_instructions = data_prep.get("instructions", None)
 
     print("=" * 60)
-    print("WORKFLOW 2 — Autonomous data prep + training")
+    print("FULL AGENT — Autonomous data prep + training")
     print("=" * 60)
 
     # step 1: LLM-driven data preparation
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     cfg["paths"]["class_mapping"] = data_paths["class_mapping"]
     cfg["paths"]["class_weights"] = data_paths["class_weights"]
     cfg.get("paths", {}).pop("output_dir", None)
-    cfg.setdefault("experiment", {})["notes"] = "Workflow 2 — autonomous data prep + training."
+    cfg.setdefault("experiment", {})["notes"] = "Full Agent — autonomous data prep + training."
 
     auto_config_path = "data/auto_training_config.yaml"
     with open(auto_config_path, "w") as f:

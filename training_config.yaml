@@ -67,7 +67,7 @@ augmentations:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# WORKFLOW 1 — Human + Agent  →  python run_human_agent.py
+# HUMAN+AGENT  →  python run_human_agent.py
 # Edit paths below — you prepare the dataset, agent handles training.
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -79,7 +79,7 @@ paths:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# WORKFLOW 2 — Full Agent  →  python run_full_agent.py
+# FULL AGENT  →  python run_full_agent.py
 # Edit below — agent picks classes, prepares data, then trains.
 # ══════════════════════════════════════════════════════════════════════════
 

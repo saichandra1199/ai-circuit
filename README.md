@@ -8,7 +8,7 @@ An AI agent that autonomously improves an image classifier through iterative exp
 
 ## Two Workflows
 
-| | Workflow 1 | Workflow 2 |
+| | Human+Agent | Full Agent |
 |---|---|---|
 | **Run** | `python run_human_agent.py` | `python run_full_agent.py` |
 | **Human does** | Prepares dataset (`data/` structure, splits, class weights) | Sets config only |
@@ -46,21 +46,21 @@ OPENAI_API_KEY=sk-...
 
 ## Quick Start
 
-### Workflow 1 — You prepare data, agent trains and optimizes
+### Human+Agent — You prepare data, agent trains and optimizes
 
 ```bash
 python run_human_agent.py
 ```
 
-Edit `training_config.yaml` → **WORKFLOW 1** section to point `paths.data_dir` at your dataset.
+Edit `training_config.yaml` → **HUMAN+AGENT** section to point `paths.data_dir` at your dataset.
 
-### Workflow 2 — Fully autonomous (raw data → trained model)
+### Full Agent — Fully autonomous (raw data → trained model)
 
 ```bash
 python run_full_agent.py
 ```
 
-Edit `training_config.yaml` → **WORKFLOW 2** section: set `data_prep.raw_data_dir` to your raw dataset path, optionally add `data_prep.instructions`.
+Edit `training_config.yaml` → **FULL AGENT** section: set `data_prep.raw_data_dir` to your raw dataset path, optionally add `data_prep.instructions`.
 
 ### Manual single run (no agent)
 
@@ -87,11 +87,11 @@ agent:
 
 model, training, optimizer, scheduler, loss, augmentations
 
-# ══ WORKFLOW 1 ══
+# ══ HUMAN+AGENT ══
 paths:
   data_dir, class_mapping, class_weights
 
-# ══ WORKFLOW 2 ══
+# ══ FULL AGENT ══
 data_prep:
   raw_data_dir, max_train_per_class, instructions
 ```
@@ -104,14 +104,14 @@ data_prep:
 AI_circuit/
 ├── train.py                      # training pipeline — fixed, agent never modifies
 ├── training_config.yaml          # single config for both workflows
-├── run_human_agent.py            # Workflow 1 entry point
-├── run_full_agent.py             # Workflow 2 entry point
+├── run_human_agent.py            # Human+Agent entry point
+├── run_full_agent.py             # Full Agent entry point
 ├── requirements.txt
 ├── .env                          # OPENAI_API_KEY
 │
 ├── agents/
 │   ├── training_agent.py         # LangGraph loop: init→train→evaluate→notes→improve
-│   ├── data_prep_agent.py        # LLM-driven data prep (Workflow 2 only)
+│   ├── data_prep_agent.py        # LLM-driven data prep (Full Agent only)
 │   └── prompts.py                # IMPROVE_PROMPT + NOTES_PROMPT templates
 │
 ├── utils/
@@ -189,7 +189,7 @@ Baseline has advanced augmentations OFF — gives the agent room to improve.
 
 ## Dataset
 
-Works with any image classification dataset. Workflow 2 requires a CSV with a label column and an ID column matching image filenames. Configure `label_col`/`id_col` in `prepare_data()` for non-default schemas.
+Works with any image classification dataset. The Full Agent workflow requires a CSV with a label column and an ID column matching image filenames. Configure `label_col`/`id_col` in `prepare_data()` for non-default schemas.
 
 Stratified 80/10/10 split. Class imbalance handled via `WeightedRandomSampler` + `WeightedCrossEntropy`.
 
