@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AI Circuit
 
 
@@ -91,3 +92,137 @@ For open source projects, say how it is licensed.
 
 ## Project status
 If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+=======
+# H&M Fashion Classification — Agentic ML Loop
+
+5-class fashion image classification on the H&M dataset, used as a benchmark to demonstrate an **autonomous AI ML engineer** that iteratively improves model performance without human intervention.
+
+## Project Goal
+
+This is **not** a model accuracy competition. The objective is to show an agentic experimentation loop where an AI agent:
+1. Runs a training experiment
+2. Reads the results (metrics, per-class F1, confusion matrix)
+3. Writes experiment notes
+4. Proposes config changes
+5. Repeats until a target F1 is reached or iterations are exhausted
+
+See [Project.md](Project.md) for the full system architecture.
+
+---
+
+## Setup
+
+### Requirements
+
+```bash
+pip install torch torchvision timm scikit-learn tensorboard pyyaml langgraph openai
+```
+
+Set your OpenAI API key:
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+### Directory Structure
+
+```
+H&M_data/
+├── data/
+│   ├── sample/          # 500 train / 63 val / 63 test per class (fast iteration)
+│   ├── full/            # full dataset (symlink → processed_data/)
+│   ├── class_weights.json
+│   └── class_mapping.json
+├── agents/
+│   ├── hm_training_agent.py   # LangGraph agent
+│   └── prompts.py             # LLM prompt templates
+├── experiments/               # auto-created; one subdir per agent run
+│   ├── run_1/
+│   │   ├── config.yaml        # exact config used
+│   │   ├── best_model.pth     # best checkpoint
+│   │   ├── metrics.json       # full metrics + history
+│   │   ├── notes.md           # LLM-written experiment notes
+│   │   └── tensorboard/
+│   └── experiment_log.json    # cross-run summary
+├── processed_data/            # original preprocessed splits (full scale)
+├── train.py                   # training pipeline (config-driven, agent does not modify)
+├── training_config.yaml       # baseline config (agent reads this as starting point)
+├── run_agent.py               # agent entry point
+└── create_sample_data.py      # creates data/sample/ from processed_data/
+```
+
+---
+
+## Quick Start
+
+### Run the agentic loop (sample data, 5 iterations)
+
+```bash
+python run_agent.py --max-iterations 5 --target-f1 0.75
+```
+
+### Run a single training manually
+
+```bash
+python train.py --config training_config.yaml
+```
+
+### Switch to full dataset
+
+Edit `training_config.yaml`:
+```yaml
+paths:
+  data_dir: data/full
+training:
+  max_samples_per_class: null   # or set e.g. 2000 for capped full-data runs
+```
+
+### Monitor training
+
+```bash
+tensorboard --logdir experiments/
+```
+
+---
+
+## Config Reference
+
+Key fields the agent is allowed to modify:
+
+| Key | Default | Options |
+|-----|---------|---------|
+| `model.backbone` | `efficientnet_b0` | `efficientnet_b0/b2/b4`, `resnet18/50`, `convnext_tiny` |
+| `model.checkpoint` | `null` | path to `.pth` for warm-starting |
+| `optimizer.lr` | `0.0003` | 1e-5 to 5e-4 |
+| `optimizer.type` | `adamw` | `adamw`, `adam`, `sgd` |
+| `scheduler.type` | `cosine` | `cosine`, `step`, `onecycle`, `plateau` |
+| `loss.type` | `weighted_ce` | `weighted_ce`, `focal` |
+| `augmentations.mixup` | `false` | `true/false` |
+| `augmentations.cutmix` | `false` | `true/false` |
+| `augmentations.randaugment` | `false` | `true/false` |
+| `training.max_samples_per_class` | `null` | integer or `null` |
+
+---
+
+## Dataset
+
+H&M Personalized Fashion — 5 classes from `product_group_name`:
+
+| Class | Train (full) | Weight |
+|-------|-------------|--------|
+| Garment Upper body | 34,144 | 0.43 |
+| Garment Lower body | 15,816 | 0.93 |
+| Garment Full body | 10,620 | 1.38 |
+| Accessories | 8,804 | 1.67 |
+| Shoes | 4,125 | 3.56 |
+
+Class weights are inverse-frequency normalized for `WeightedCrossEntropy` and `WeightedRandomSampler`.
+
+---
+
+## Workflows
+
+**Workflow 1 (this repo):** Human prepares data → AI agent trains and iterates  
+**Workflow 2:** Agent receives raw files only → decides data structure → trains and iterates
+
+See [Project.md](Project.md) for both workflows in detail.
+>>>>>>> 8353d3a (initial commit)
