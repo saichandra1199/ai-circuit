@@ -4,8 +4,8 @@
 __pycache__/
 *.pyc
 *.pth
+*.pdf
 data/
-docs/
 
 
 
