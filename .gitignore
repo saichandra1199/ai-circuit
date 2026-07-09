@@ -13,11 +13,9 @@ uv.lock
 # model checkpoints
 *.pth
 
-# generated data & run artifacts
+# generated data & experiment runs
 data/
-
-# generated configs (workflow 2)
-data/auto_training_config.yaml
+experiments/
 
 # tooling
 .claude/
