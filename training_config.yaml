@@ -3,8 +3,8 @@
 # ══════════════════════════════════════════════════════════════════════════
 
 agent:
-  experiment_name: test1_fa           # appended to session dir and data dir (e.g. "baseline_convnext")
-  max_iterations: 5              # train→evaluate→improve cycles
+  experiment_name: test_fa           # appended to session dir and data dir (e.g. "baseline_convnext")
+  max_iterations: 2             # train→evaluate→improve cycles
   target_f1: 0.9                 # agent stops early when this macro F1 is reached
   llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
 
@@ -31,13 +31,13 @@ model:
   dropout: 0.3
 
 training:
-  epochs: 20
+  epochs: 1
   batch_size: 32
   num_workers: 0                 # 0 = safe for WSL2; increase on Linux/Kaggle
   mixed_precision: true
   early_stopping_patience: 5
   early_stopping_min_delta: 0.001
-  max_samples_per_class: 20    # null = use all data
+  max_samples_per_class: 15    # null = use all data
 
 optimizer:
   type: adamw                    # options: adamw, adam, sgd
