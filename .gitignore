@@ -4,9 +4,8 @@
 __pycache__/
 *.pyc
 *.pth
-experiments/
-data/full/
-docs/
 data/
+docs/
+
 
 
