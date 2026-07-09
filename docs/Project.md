@@ -112,7 +112,49 @@ data/auto/              # Workflow 2 output (agent-created)
 
 ---
 
-## 5. Training Pipeline (`train.py`)
+## 5. Evaluation Metric — Macro F1
+
+### What is F1?
+
+F1 score is the harmonic mean of **precision** and **recall** for a single class:
+
+```
+Precision = TP / (TP + FP)   ← of all predictions for this class, how many were right?
+Recall    = TP / (TP + FN)   ← of all actual items of this class, how many did we find?
+
+F1 = 2 × (Precision × Recall) / (Precision + Recall)
+```
+
+F1 ranges from 0 (worst) to 1 (perfect). It penalizes both false positives and false negatives equally — a model can't game it by only predicting the easy class or by predicting everything as one class.
+
+### Why "Macro"?
+
+With multiple classes, you can aggregate F1 in different ways:
+
+| Aggregation | How | Effect |
+|---|---|---|
+| **Micro F1** | Pool all TPs/FPs/FNs across classes, then compute one F1 | Dominated by the largest class — big class gets more votes |
+| **Macro F1** | Compute F1 per class, then average (unweighted) | Every class counts equally regardless of size |
+| **Weighted F1** | Compute F1 per class, then average weighted by class size | Similar to micro — large classes still dominate |
+
+**Macro F1 is the right metric for imbalanced classification.**
+
+Example: 3 classes — Shoes (5000 imgs), Accessories (500 imgs), Underwear (100 imgs).
+
+- A model that perfectly classifies Shoes but ignores Underwear gets ~80% accuracy.
+- Macro F1 gives equal weight to Underwear's F1 — if the model never predicts Underwear, Underwear F1 = 0, which drags macro F1 down severely.
+- This forces the agent to optimize for every class, not just the majority.
+
+### How the Agent Uses It
+
+- **Target:** `agent.target_f1` in config — agent stops when test macro F1 exceeds this.
+- **Best checkpoint:** `train.py` saves `best_model.pth` based on *validation* macro F1.
+- **Per-class breakdown:** `metrics.json` includes per-class F1 so the agent can identify which classes underperform and target specific fixes (e.g., more augmentation, class weight adjustment).
+- **Plateau detection:** if macro F1 improves by < 0.005 for 2 consecutive runs, the agent switches to bold-change mode.
+
+---
+
+## 6. Training Pipeline (`train.py`)
 
 Config-driven, fixed code. Agent modifies only the YAML — never the script.
 
@@ -167,7 +209,7 @@ run_N/
 
 ---
 
-## 6. Agentic Loop (`agents/training_agent.py`)
+## 7. Agentic Loop (`agents/training_agent.py`)
 
 Built with **LangGraph StateGraph**. LLM configurable via `agent.llm_model` in config.
 
@@ -217,7 +259,7 @@ init_iter ──► run_train ──► evaluate ──┬──(done)──► 
 
 ---
 
-## 7. Experiment Logs
+## 8. Experiment Logs
 
 ### Session log — `<session_dir>/experiment_log.json`
 
@@ -254,7 +296,7 @@ Accumulates every run across all sessions ever. Append-only. Use this to compare
 
 ---
 
-## 8. Config-Diff Design
+## 9. Config-Diff Design
 
 The agent returns a JSON diff of config changes:
 
@@ -284,7 +326,7 @@ When backbone stays the same, agent can warm-start:
 
 ---
 
-## 9. LLM Prompts (`agents/prompts.py`)
+## 10. LLM Prompts (`agents/prompts.py`)
 
 ### `IMPROVE_PROMPT`
 
@@ -303,7 +345,7 @@ Notes serve dual purpose: human-readable audit trail + LLM context for the impro
 
 ---
 
-## 10. Data Prep Agent (`agents/data_prep_agent.py`) — Workflow 2 only
+## 11. Data Prep Agent (`agents/data_prep_agent.py`) — Workflow 2 only
 
 Invoked by `run_full_agent.py` before the training loop.
 
@@ -318,7 +360,7 @@ Invoked by `run_full_agent.py` before the training loop.
 
 ---
 
-## 11. Files Reference
+## 12. Files Reference
 
 | File | Purpose |
 |---|---|
@@ -337,7 +379,7 @@ Invoked by `run_full_agent.py` before the training loop.
 
 ---
 
-## 12. Design Decisions
+## 13. Design Decisions
 
 **Why config-diff and not script rewriting?**  
 Config changes cover 95% of the optimization space for image classification. Rewriting `train.py` risks code bugs that obscure the F1 signal. Config-diff keeps the loop clean and auditable.

@@ -33,7 +33,8 @@ Raw dataset stats:
 - Total items in CSV: {total_raw}
 - Total unique classes: {total_classes}
 - Items with missing images: {missing_count} ({missing_pct:.1f}%)
-- Items after image filter: {items_with_images}
+- Items available for selected classes (after image filter): {items_available}
+- Items actually used after capping (max_train_per_class={max_train_per_class}): {items_used}
 
 All available classes (name: count):
 {all_classes}
@@ -183,12 +184,15 @@ def prepare_data(
     train_counts_vals = [train_counts[c] for c in class_names]
     imbalance_ratio = max(train_counts_vals) / max(1, min(train_counts_vals))
 
+    total_used = sum(sum(c.values()) for c in split_counts.values())
     notes = _dial_chat(_ANALYSIS_PROMPT.format(
         total_raw=total_raw,
         total_classes=len(dist),
         missing_count=missing_count,
         missing_pct=100 * missing_count / max(1, before_filter),
-        items_with_images=len(df),
+        items_available=len(df),
+        items_used=total_used,
+        max_train_per_class=max_train_per_class or "unlimited",
         all_classes="\n".join(f"  {k}: {v}" for k, v in dist.items()),
         selected_classes=", ".join(class_names),
         rationale=decision["rationale"],
