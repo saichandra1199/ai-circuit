@@ -155,8 +155,8 @@ def prepare_data(
     n = len(class_names)
     class_weights = {cls: (total_train / (n * train_counts[cls])) for cls in class_names}
 
-    mapping_path = "data/class_mapping_auto.json"
-    weights_path = "data/class_weights_auto.json"
+    mapping_path = str(out / "class_mapping.json")
+    weights_path = str(out / "class_weights.json")
     with open(mapping_path, "w") as f:
         json.dump(class_mapping, f, indent=2)
     with open(weights_path, "w") as f:

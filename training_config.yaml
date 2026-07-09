@@ -74,8 +74,8 @@ augmentations:
 
 paths:
   data_dir: data/sample          # folder with train/val/test/<class>/ structure
-  class_weights: data/class_weights.json
-  class_mapping: data/class_mapping.json
+  class_weights: data/sample/class_weights.json
+  class_mapping: data/sample/class_mapping.json
   experiment_dir: experiments
 
 
