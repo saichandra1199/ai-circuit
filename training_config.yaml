@@ -1,9 +1,16 @@
 experiment:
   name: baseline_efficientnet_b0
-  notes: "Workflow 1 baseline — human-prepared data, agent trains. No advanced augmentations reserved for agent."
+  notes: "Workflow baseline — human-prepared data, agent trains. No advanced augmentations reserved for agent."
+
+agent:
+  max_iterations: 2
+  target_f1: 0.75
+  # Full Agent Workflow only
+  raw_data_dir: ../HM_Data/raw_data
+  max_train_per_class: 50          # null = use all images; set e.g. 500 for faster runs
 
 paths:
-  data_dir: data/sample          # swap to data/full for full-scale training
+  data_dir: data/sample          
   class_weights: data/class_weights.json
   class_mapping: data/class_mapping.json
   experiment_dir: experiments
@@ -22,7 +29,7 @@ training:
   mixed_precision: true
   early_stopping_patience: 5
   early_stopping_min_delta: 0.001
-  max_samples_per_class: null    # null = use full sample dataset
+  max_samples_per_class: 100    # null = use full sample dataset
 
 optimizer:
   type: adamw                    # options: adamw, adam, sgd

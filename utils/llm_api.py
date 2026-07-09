@@ -5,18 +5,11 @@ from openai import OpenAI
 
 load_dotenv()
 
-_client = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    return _client
+_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def chat(prompt: str, model: str = "gpt-4o-mini") -> str:
-    resp = _get_client().chat.completions.create(
+    resp = _client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,

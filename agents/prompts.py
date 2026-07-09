@@ -1,7 +1,7 @@
 IMPROVE_PROMPT = """\
 You are an expert computer vision engineer improving a PyTorch image classification pipeline.
 
-Task: H&M fashion image classification ({num_classes} classes)
+Task: image classification ({num_classes} classes)
 Classes: {class_names}
 Metric: macro F1 (primary)
 Target: macro_f1 >= {target_f1}

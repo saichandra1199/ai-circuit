@@ -1,11 +1,25 @@
+# secrets
 .env
+
+# deps / venv
 .venv/
-.codemie/
-__pycache__/
+uv.lock
+
+# python cache
+**/__pycache__/
 *.pyc
+*.pyo
+
+# model checkpoints
 *.pth
-*.pdf
+
+# generated data & run artifacts
 data/
 
+# generated configs (workflow 2)
+data/auto_training_config.yaml
 
-
+# tooling
+.claude/
+.codemie/
+*.pdf

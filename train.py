@@ -17,13 +17,6 @@ from sklearn.metrics import classification_report, confusion_matrix
 import yaml
 
 
-# ── model ─────────────────────────────────────────────────────────────────────
-
-def get_model(backbone: str, num_classes: int, dropout: float = 0.3):
-    import timm
-    return timm.create_model(backbone, pretrained=True, num_classes=num_classes, drop_rate=dropout)
-
-
 # ── transforms ────────────────────────────────────────────────────────────────
 
 def build_transforms(cfg):
@@ -277,6 +270,8 @@ def main(config_path: str):
     max_per_class = tcfg.get("max_samples_per_class")
     if max_per_class:
         train_ds = _subsample(train_ds, max_per_class)
+        val_ds   = _subsample(val_ds,   max_per_class)
+        test_ds  = _subsample(test_ds,  max_per_class)
 
     print(f"\n{'─'*60}")
     print(f"Experiment : {exp_name}")
@@ -307,7 +302,9 @@ def main(config_path: str):
     use_amp = tcfg.get("mixed_precision", True) and device.type == "cuda"
     print(f"Device: {device} | AMP: {use_amp}")
 
-    model = get_model(cfg["model"]["backbone"], len(class_names), cfg["model"].get("dropout", 0.3))
+    import timm
+    model = timm.create_model(cfg["model"]["backbone"], pretrained=True,
+                              num_classes=len(class_names), drop_rate=cfg["model"].get("dropout", 0.3))
     checkpoint = cfg["model"].get("checkpoint")
     if checkpoint and Path(checkpoint).exists():
         try:

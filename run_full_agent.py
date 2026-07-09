@@ -3,45 +3,43 @@ Workflow 2: Fully autonomous agent.
 LLM decides classes + data splits, then trains.
 """
 import argparse
-import copy
-
 import yaml
 
-from agents.hm_data_prep_agent import prepare_data
-from agents.hm_training_agent import run as run_training
+from agents.data_prep_agent import prepare_data
+from agents.training_agent import run as run_training
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--raw-data-dir", default="../HM_Data/raw_data",
-                    help="Path to directory containing articles.csv and images/")
-    ap.add_argument("--max-train-per-class", type=int, default=None,
-                    help="Cap training images per class (None = use all)")
-    ap.add_argument("--base-config", default="training_config.yaml",
-                    help="Base training config to inherit non-data settings from")
-    ap.add_argument("--max-iterations", type=int, default=5)
-    ap.add_argument("--target-f1", type=float, default=0.75)
+    ap.add_argument("--config", default="training_config.yaml")
     args = ap.parse_args()
 
-    # step 1: LLM-driven data preparation
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    agent = cfg.get("agent", {})
+    max_iterations = agent.get("max_iterations", 5)
+    target_f1 = agent.get("target_f1", 0.75)
+    raw_data_dir = agent.get("raw_data_dir", "../raw_data")
+    max_train_per_class = agent.get("max_train_per_class", None)
+
     print("=" * 60)
     print("WORKFLOW 2 — Autonomous data prep + training")
     print("=" * 60)
 
+    # step 1: LLM-driven data preparation
     data_paths = prepare_data(
-        raw_data_dir=args.raw_data_dir,
+        raw_data_dir=raw_data_dir,
         output_dir="data/auto",
-        max_train_per_class=args.max_train_per_class,
+        max_train_per_class=max_train_per_class,
     )
 
-    # step 2: patch base config with agent-chosen data paths
-    with open(args.base_config) as f:
-        cfg = yaml.safe_load(f)
-
+    # step 2: patch base config with agent-chosen data paths + workflow note
     cfg["paths"]["data_dir"] = data_paths["data_dir"]
     cfg["paths"]["class_mapping"] = data_paths["class_mapping"]
     cfg["paths"]["class_weights"] = data_paths["class_weights"]
     cfg.get("paths", {}).pop("output_dir", None)
+    cfg.setdefault("experiment", {})["notes"] = "Workflow 2 — autonomous data prep + training."
 
     auto_config_path = "data/auto_training_config.yaml"
     with open(auto_config_path, "w") as f:
@@ -52,6 +50,6 @@ if __name__ == "__main__":
     # step 3: run training agent loop
     run_training(
         config_path=auto_config_path,
-        max_iterations=args.max_iterations,
-        target_f1=args.target_f1,
+        max_iterations=max_iterations,
+        target_f1=target_f1,
     )

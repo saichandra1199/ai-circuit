@@ -16,7 +16,7 @@ from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT
 
 # ── state ─────────────────────────────────────────────────────────────────────
 
-class HMTrainingState(TypedDict):
+class TrainingState(TypedDict):
     run_num: int
     base_config: dict
     current_config: dict
@@ -53,10 +53,6 @@ def _fmt_per_class(metrics: dict) -> str:
     return "\n".join(lines)
 
 
-def _cfg_to_yaml(cfg: dict) -> str:
-    return yaml.dump(cfg, default_flow_style=False, sort_keys=False)
-
-
 def _save_log(log: list, path: str = "experiments/experiment_log.json"):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
@@ -65,7 +61,7 @@ def _save_log(log: list, path: str = "experiments/experiment_log.json"):
 
 # ── nodes ─────────────────────────────────────────────────────────────────────
 
-def init_iter(state: HMTrainingState) -> dict:
+def init_iter(state: TrainingState) -> dict:
     run_num = state["run_num"] + 1
     cfg = copy.deepcopy(state["current_config"])
     run_dir = Path("experiments") / f"run_{run_num}"
@@ -87,7 +83,7 @@ def init_iter(state: HMTrainingState) -> dict:
     return {"run_num": run_num, "current_config": cfg, "error": None}
 
 
-def run_train(state: HMTrainingState) -> dict:
+def run_train(state: TrainingState) -> dict:
     run_dir = Path("experiments") / f"run_{state['run_num']}"
     config_path = run_dir / "config.yaml"
 
@@ -107,7 +103,7 @@ def run_train(state: HMTrainingState) -> dict:
     return {"error": None}
 
 
-def evaluate(state: HMTrainingState) -> dict:
+def evaluate(state: TrainingState) -> dict:
     run_dir = Path("experiments") / f"run_{state['run_num']}"
     metrics_path = run_dir / "metrics.json"
 
@@ -125,7 +121,6 @@ def evaluate(state: HMTrainingState) -> dict:
     else:
         plateau_count = 0
 
-    run_dir = Path("experiments") / f"run_{state['run_num']}"
     ckpt_path = str(run_dir / "best_model.pth")
     best_ckpt = state["best_checkpoint_path"]
     if macro_f1 >= state["best_macro_f1"]:
@@ -159,7 +154,7 @@ def evaluate(state: HMTrainingState) -> dict:
     }
 
 
-def generate_notes(state: HMTrainingState) -> dict:
+def generate_notes(state: TrainingState) -> dict:
     m = state["last_metrics"]
     test_m = m["test"]
     macro_f1 = test_m["macro_f1"]
@@ -195,7 +190,7 @@ def generate_notes(state: HMTrainingState) -> dict:
     return {"notes_history": notes_history}
 
 
-def improve(state: HMTrainingState) -> dict:
+def improve(state: TrainingState) -> dict:
     m = state["last_metrics"]
     test_m = m["test"]
     macro_f1 = test_m["macro_f1"]
@@ -229,7 +224,7 @@ def improve(state: HMTrainingState) -> dict:
         target_f1=target_f1,
         num_classes=len(class_names_list),
         class_names=", ".join(class_names_list) if class_names_list else "see per-class F1 below",
-        config_yaml=_cfg_to_yaml(state["current_config"]),
+        config_yaml=yaml.dump(state["current_config"], default_flow_style=False, sort_keys=False),
         macro_f1=macro_f1,
         f1_gap=macro_f1 - target_f1,
         accuracy=test_m["accuracy"],
@@ -262,18 +257,10 @@ def improve(state: HMTrainingState) -> dict:
     return {"current_config": new_config, "last_diff": diff}
 
 
-# ── routing ───────────────────────────────────────────────────────────────────
-
-def route_after_eval(state: HMTrainingState) -> str:
-    if state["done"] or state.get("error"):
-        return "end"
-    return "continue"
-
-
 # ── graph ─────────────────────────────────────────────────────────────────────
 
 def build_graph():
-    g = StateGraph(HMTrainingState)
+    g = StateGraph(TrainingState)
     g.add_node("init_iter", init_iter)
     g.add_node("run_train", run_train)
     g.add_node("evaluate", evaluate)
@@ -284,7 +271,8 @@ def build_graph():
     g.add_edge("init_iter", "run_train")
     g.add_conditional_edges("run_train", lambda s: "end" if s.get("error") else "ok",
                             {"end": END, "ok": "evaluate"})
-    g.add_conditional_edges("evaluate", route_after_eval, {"end": END, "continue": "generate_notes"})
+    g.add_conditional_edges("evaluate", lambda s: "end" if s["done"] or s.get("error") else "continue",
+                            {"end": END, "continue": "generate_notes"})
     g.add_edge("generate_notes", "improve")
     g.add_edge("improve", "init_iter")
 
@@ -298,7 +286,7 @@ def run(config_path: str = "training_config.yaml", max_iterations: int = 5, targ
     # remove output_dir if present in base config (agent manages it)
     base_cfg.get("paths", {}).pop("output_dir", None)
 
-    initial_state: HMTrainingState = {
+    initial_state: TrainingState = {
         "run_num": 0,
         "base_config": base_cfg,
         "current_config": copy.deepcopy(base_cfg),

@@ -6,7 +6,7 @@ import shutil
 import random
 from pathlib import Path
 
-SRC = Path("../HM_Data/raw_data/")
+SRC = Path("../raw_data/")
 DST = Path("data/sample")
 SEED = 42
 COUNTS = {"train": 500, "val": 63, "test": 63}

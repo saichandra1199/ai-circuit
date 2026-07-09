@@ -2,14 +2,19 @@ experiment:
   name: agent_run_1
   notes: "Workflow 1 baseline \u2014 human-prepared data, agent trains. No advanced\
     \ augmentations reserved for agent."
+agent:
+  max_iterations: 2
+  target_f1: 0.75
+  raw_data_dir: ../HM_Data/raw_data
+  max_train_per_class: 50
 paths:
-  data_dir: data/sample
-  class_weights: data/class_weights.json
-  class_mapping: data/class_mapping.json
+  data_dir: data/auto
+  class_weights: data/class_weights_auto.json
+  class_mapping: data/class_mapping_auto.json
   experiment_dir: experiments
   output_dir: experiments/run_1
 model:
-  backbone: efficientnet_b0
+  backbone: convnext_base.fb_in22k_ft_in1k
   pretrained: true
   checkpoint: null
   image_size: 224
@@ -21,7 +26,7 @@ training:
   mixed_precision: true
   early_stopping_patience: 5
   early_stopping_min_delta: 0.001
-  max_samples_per_class: null
+  max_samples_per_class: 100
 optimizer:
   type: adamw
   lr: 0.0003
