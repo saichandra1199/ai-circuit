@@ -3,14 +3,29 @@
 # ══════════════════════════════════════════════════════════════════════════
 
 agent:
-  experiment_name: null           # appended to session dir and data dir (e.g. "baseline_convnext")
-  max_iterations: 2              # train→evaluate→improve cycles
+  experiment_name: test1_fa           # appended to session dir and data dir (e.g. "baseline_convnext")
+  max_iterations: 5              # train→evaluate→improve cycles
   target_f1: 0.9                 # agent stops early when this macro F1 is reached
   llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
 
 model:
-  backbone: convnext_base.fb_in22k_ft_in1k  # options: efficientnet_b0/b2/b4, resnet50, convnext_tiny/small/base, vit_base_patch16_224, swin_tiny/small
-  pretrained: true
+  # ── Backbone options ───────────────────────────────────────────────────
+  # mobilenetv3_small_100  ~2.5M params — lightest option, fastest on CPU, use for prototyping only
+  # mobilenetv3_large_100  ~5.5M params — good accuracy/speed tradeoff, CPU-friendly, small datasets
+  # mobilenetv2_100        ~3.5M params — slightly older, still solid baseline for CPU inference
+  # efficientnet_b0   ~5M params   — fast, good for small datasets (<2k imgs), CPU-friendly
+  # efficientnet_b2   ~9M params   — better accuracy, still fast; good default starting point
+  # efficientnet_b4   ~19M params  — high accuracy, needs 1k+ imgs/class, slow on CPU
+  # resnet50          ~25M params  — reliable baseline, widely understood, easy to debug
+  # convnext_tiny     ~28M params  — modern CNN, outperforms resnet50, needs decent data
+  # convnext_small    ~50M params  — stronger than tiny, good for 2k+ imgs/class
+  # convnext_base     ~88M params  — top CNN accuracy, GPU recommended, needs large dataset
+  # swin_tiny         ~28M params  — transformer, strong on texture/pattern tasks
+  # swin_small        ~50M params  — better than swin_tiny, needs more data
+  # vit_base_patch16_224 ~86M params — pure transformer, best with large data (5k+ imgs/class)
+  # ───────────────────────────────────────────────────────────────────────
+  backbone: convnext_base.fb_in22k_ft_in1k
+  pretrained: true               # true = start from ImageNet weights (recommended)
   checkpoint: null               # path to .pth to warm-start (agent sets automatically)
   image_size: 224
   dropout: 0.3
@@ -22,7 +37,7 @@ training:
   mixed_precision: true
   early_stopping_patience: 5
   early_stopping_min_delta: 0.001
-  max_samples_per_class: 100     # null = use all data
+  max_samples_per_class: 20    # null = use all data
 
 optimizer:
   type: adamw                    # options: adamw, adam, sgd
@@ -73,9 +88,9 @@ augmentations:
 # ══════════════════════════════════════════════════════════════════════════
 
 paths:
-  data_dir: data/sample          # folder with train/val/test/<class>/ structure
-  class_weights: data/sample/class_weights.json
-  class_mapping: data/sample/class_mapping.json
+  data_dir: data/human_agent          # folder with train/val/test/<class>/ structure
+  class_weights: null            # null = auto-derived from data_dir/class_weights.json
+  class_mapping: null            # null = auto-derived from data_dir/class_mapping.json
   experiment_dir: experiments
 
 
@@ -87,4 +102,10 @@ paths:
 data_prep:
   raw_data_dir: ../HM_Data/raw_data      # path to raw dataset (needs articles.csv + images/)
   max_train_per_class: 20        # null = use all images; e.g. 500 for faster runs
-  instructions: null             # optional guidance, e.g. "prefer classes with >1000 images, exclude accessories"
+  instructions: null             # optional guidance (ignored when force_classes is set)
+  force_classes:                 # null = let LLM decide; list = skip LLM selection
+    - "Garment Upper body"
+    - "Garment Lower body"
+    - "Garment Full body"
+    - "Accessories"
+    - "Shoes"

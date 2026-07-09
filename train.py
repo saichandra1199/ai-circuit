@@ -1,13 +1,23 @@
+import os
+os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+
 import argparse
 import json
 import shutil
 import time
-from collections import Counter, defaultdict
+import warnings
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.utils.data.dataloader")
+warnings.filterwarnings("ignore", message="Precision is ill-defined")
+warnings.filterwarnings("ignore", message="Recall is ill-defined")
+warnings.filterwarnings("ignore", message="F-score is ill-defined")
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
@@ -240,9 +250,9 @@ def main(config_path: str):
         cfg = yaml.safe_load(f)
 
     data_dir = Path(cfg["paths"]["data_dir"])
-    with open(cfg["paths"]["class_weights"]) as f:
+    with open(cfg["paths"].get("class_weights") or data_dir / "class_weights.json") as f:
         cw_dict = json.load(f)
-    with open(cfg["paths"]["class_mapping"]) as f:
+    with open(cfg["paths"].get("class_mapping") or data_dir / "class_mapping.json") as f:
         class_mapping = json.load(f)
 
     class_names = [class_mapping[str(i)] for i in range(len(class_mapping))]
@@ -295,15 +305,56 @@ def main(config_path: str):
     use_amp = tcfg.get("mixed_precision", True) and device.type == "cuda"
 
     import timm
-    model = timm.create_model(cfg["model"]["backbone"], pretrained=True,
-                              num_classes=len(class_names), drop_rate=cfg["model"].get("dropout", 0.3))
+    backbone = cfg["model"].get("backbone") or "efficientnet_b0"
     checkpoint = cfg["model"].get("checkpoint")
+    ckpt = None
+    external_model = False  # true when checkpoint has no backbone metadata (downloaded externally)
+
     if checkpoint and Path(checkpoint).exists():
         try:
-            model.load_state_dict(torch.load(checkpoint, map_location="cpu", weights_only=True))
-            print(f"Loaded checkpoint: {checkpoint}")
+            ckpt = torch.load(checkpoint, map_location="cpu", weights_only=True)
+            if isinstance(ckpt, dict) and "backbone" in ckpt:
+                # our format — backbone + state_dict saved together
+                backbone = ckpt["backbone"]
+                print(f"Backbone loaded from checkpoint: {backbone}")
+            else:
+                # external .pth — no backbone metadata; detect from key patterns
+                external_model = True
+                state_dict = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+                keys = list(state_dict.keys())
+                first = keys[0] if keys else ""
+                if "features." in first:
+                    guess = "efficientnet_b* / mobilenet"
+                elif "stages." in first:
+                    guess = "convnext_*"
+                elif "layers." in first and "blocks." in " ".join(keys[:5]):
+                    guess = "swin_*"
+                elif "patch_embed" in " ".join(keys[:10]):
+                    guess = "vit_*"
+                elif "layer1." in first:
+                    guess = "resnet*"
+                else:
+                    guess = "unknown"
+                print(f"External checkpoint — no backbone metadata. Key pattern suggests: {guess}")
+                print(f"Using config backbone '{backbone}'. Set model.backbone to match if different.")
         except Exception as e:
-            print(f"[WARN] Checkpoint load failed ({e}), starting from pretrained weights")
+            print(f"[WARN] Could not read checkpoint ({e}), using config backbone: {backbone}")
+            ckpt = None
+
+    model = timm.create_model(backbone, pretrained=cfg["model"].get("pretrained", True),
+                              num_classes=len(class_names), drop_rate=cfg["model"].get("dropout", 0.3))
+
+    if ckpt is not None:
+        try:
+            state_dict = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+            # strict=False for external models — their head has different num_classes
+            missing, unexpected = model.load_state_dict(state_dict, strict=not external_model)
+            if external_model and missing:
+                print(f"Loaded external checkpoint (head re-initialised, {len(missing)} layers not matched)")
+            else:
+                print(f"Loaded checkpoint weights: {checkpoint}")
+        except Exception as e:
+            print(f"[WARN] Checkpoint weights load failed ({e}), starting from pretrained weights")
     model = model.to(device)
 
     criterion = get_criterion(cfg, cw_tensor, device)
@@ -355,7 +406,7 @@ def main(config_path: str):
         if val_m["macro_f1"] > best_f1 + min_delta:
             best_f1 = val_m["macro_f1"]
             no_improve = 0
-            torch.save(model.state_dict(), exp_dir / "best_model.pth")
+            torch.save({"backbone": backbone, "state_dict": model.state_dict()}, exp_dir / "best_model.pth")
             print(f"  ★  New best val F1: {best_f1:.4f}")
         else:
             no_improve += 1
@@ -364,7 +415,8 @@ def main(config_path: str):
                 break
 
     # test eval on best checkpoint
-    model.load_state_dict(torch.load(exp_dir / "best_model.pth", weights_only=True))
+    ckpt = torch.load(exp_dir / "best_model.pth", weights_only=True)
+    model.load_state_dict(ckpt["state_dict"] if isinstance(ckpt, dict) and "state_dict" in ckpt else ckpt)
     test_m = evaluate(model, test_loader, criterion, device, class_names, use_amp)
 
     print(f"\nTest | acc={test_m['accuracy']:.4f}  macro_f1={test_m['macro_f1']:.4f}")

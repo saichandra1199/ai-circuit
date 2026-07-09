@@ -23,7 +23,7 @@ Per-class F1:
 Available config keys you may change (dot-notation):
 
 MODEL
-- model.backbone: convnext_base.fb_in22k_ft_in1k, convnext_small.fb_in22k_ft_in1k, convnext_large.fb_in22k_ft_in1k, swin_base_patch4_window7_224.ms_in22k_ft_in1k, swin_small_patch4_window7_224.ms_in22k_ft_in1k, tf_efficientnetv2_m.in21k_ft_in1k, tf_efficientnetv2_s.in21k_ft_in1k, vit_base_patch16_224.augreg2_in21k_ft_in1k, efficientnet_b4, efficientnet_b2, resnet50, convnext_tiny
+- model.backbone: mobilenetv3_small_100, mobilenetv3_large_100, mobilenetv2_100, efficientnet_b0, efficientnet_b2, efficientnet_b4, resnet50, convnext_tiny, convnext_small.fb_in22k_ft_in1k, convnext_base.fb_in22k_ft_in1k, swin_small_patch4_window7_224.ms_in22k_ft_in1k, swin_base_patch4_window7_224.ms_in22k_ft_in1k, vit_base_patch16_224.augreg2_in21k_ft_in1k
 - model.dropout: 0.0–0.5
 - model.image_size: 224, 256  (changing this also scales all crop/resize ops automatically)
 - model.checkpoint: path to .pth file for warm-starting — use ONLY if keeping the same backbone, else set to null

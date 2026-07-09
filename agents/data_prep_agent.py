@@ -8,6 +8,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from utils.llm_api import chat as _dial_chat
+from utils.data_prep import _img_path
 
 _CLASS_DECISION_PROMPT = """\
 You are an ML engineer selecting classes for an image classification task.
@@ -69,10 +70,6 @@ def _cap(df, label_col, n):
               .reset_index(drop=True))
 
 
-def _img_path(images_dir: Path, article_id: str) -> Path:
-    padded = article_id.zfill(10)  # CSV omits leading zero; filenames are always 10 digits
-    return images_dir / padded[:3] / f"{padded}.jpg"
-
 
 def prepare_data(
     raw_data_dir: str,
@@ -83,9 +80,11 @@ def prepare_data(
     id_col: str = "article_id",
     llm_model: str = "gpt-4o-mini",
     instructions: str | None = None,
+    force_classes: list | None = None,
 ) -> dict:
     """
     LLM-driven data prep: decide classes → split → copy images → write metadata.
+    If force_classes is provided, skips LLM class selection.
     Returns dict of paths for training_config.yaml.
     """
     raw = Path(raw_data_dir)
@@ -99,18 +98,24 @@ def prepare_data(
     dist_str = "\n".join(f"  {k}: {v}" for k, v in dist.items())
     print(f"Label distribution:\n{dist_str}\n")
 
-    # 2. LLM decides classes
-    prompt = _CLASS_DECISION_PROMPT.format(
-        total=len(df), label_col=label_col, distribution=dist_str
-    )
-    if instructions:
-        prompt += f"\nAdditional human instructions: {instructions}\n"
-    resp = _dial_chat(prompt, model=llm_model)
-    match = re.search(r"\{.*\}", resp, re.DOTALL)
-    decision = json.loads(match.group(0))
-    classes: list[str] = decision["classes"]
-    print(f"LLM selected: {classes}")
-    print(f"Rationale: {decision['rationale']}\n")
+    # 2. class selection — human override or LLM
+    if force_classes:
+        classes: list[str] = force_classes
+        rationale = "Human-specified classes (LLM selection skipped)."
+        print(f"Using forced classes: {classes}\n")
+    else:
+        prompt = _CLASS_DECISION_PROMPT.format(
+            total=len(df), label_col=label_col, distribution=dist_str
+        )
+        if instructions:
+            prompt += f"\nAdditional human instructions: {instructions}\n"
+        resp = _dial_chat(prompt, model=llm_model)
+        match = re.search(r"\{.*\}", resp, re.DOTALL)
+        decision = json.loads(match.group(0))
+        classes = decision["classes"]
+        rationale = decision["rationale"]
+        print(f"LLM selected: {classes}")
+        print(f"Rationale: {rationale}\n")
 
     # 3. filter to selected classes + image exists
     df = df[df[label_col].isin(classes)].copy()
@@ -195,7 +200,7 @@ def prepare_data(
         max_train_per_class=max_train_per_class or "unlimited",
         all_classes="\n".join(f"  {k}: {v}" for k, v in dist.items()),
         selected_classes=", ".join(class_names),
-        rationale=decision["rationale"],
+        rationale=rationale,
         split_table=split_table,
         weights_table=weights_table,
         imbalance_ratio=imbalance_ratio,

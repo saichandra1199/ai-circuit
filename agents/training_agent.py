@@ -346,9 +346,12 @@ def build_graph():
     return g.compile()
 
 
-def run(config_path: str = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75, workflow: str = "human+agent"):
-    with open(config_path) as f:
-        base_cfg = yaml.safe_load(f)
+def run(config_path: str | dict = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75, workflow: str = "human+agent"):
+    if isinstance(config_path, dict):
+        base_cfg = config_path
+    else:
+        with open(config_path) as f:
+            base_cfg = yaml.safe_load(f)
 
     # remove output_dir if present in base config (agent manages it)
     base_cfg.get("paths", {}).pop("output_dir", None)

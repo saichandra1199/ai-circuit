@@ -28,18 +28,21 @@ if __name__ == "__main__":
     raw_data_dir = data_prep.get("raw_data_dir", "../raw_data")
     max_train_per_class = data_prep.get("max_train_per_class", None)
     data_prep_instructions = data_prep.get("instructions", None)
+    force_classes = data_prep.get("force_classes", None)
 
     print("=" * 60)
     print("FULL AGENT — Autonomous data prep + training")
     print("=" * 60)
 
     # step 1: LLM-driven data preparation
+    data_dir_name = exp_name.replace(" ", "_") if exp_name else "auto"
     data_paths = prepare_data(
         raw_data_dir=raw_data_dir,
-        output_dir=f"data/auto{exp_suffix}",
+        output_dir=f"data/{data_dir_name}",
         max_train_per_class=max_train_per_class,
         llm_model=llm_model,
         instructions=data_prep_instructions,
+        force_classes=force_classes,
     )
 
     # step 2: patch base config with agent-chosen data paths + workflow note
@@ -49,15 +52,9 @@ if __name__ == "__main__":
     cfg.get("paths", {}).pop("output_dir", None)
     cfg.setdefault("experiment", {})["notes"] = "Full Agent — autonomous data prep + training."
 
-    auto_config_path = f"data/auto{exp_suffix}_training_config.yaml"
-    with open(auto_config_path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-
-    print(f"Auto config written → {auto_config_path}\n")
-
     # step 3: run training agent loop
     run_training(
-        config_path=auto_config_path,
+        config_path=cfg,
         max_iterations=max_iterations,
         target_f1=target_f1,
         workflow="full_agent",
