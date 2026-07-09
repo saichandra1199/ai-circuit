@@ -28,7 +28,8 @@ Return ONLY valid JSON — no other text:
 
 
 def _img_path(images_dir: Path, article_id: str) -> Path:
-    return images_dir / article_id[:3] / f"{article_id}.jpg"
+    padded = article_id.zfill(10)  # CSV omits leading zero; filenames are always 10 digits
+    return images_dir / padded[:3] / f"{padded}.jpg"
 
 
 def prepare_data(

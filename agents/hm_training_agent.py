@@ -223,9 +223,12 @@ def improve(state: HMTrainingState) -> dict:
             "but ONLY if keeping the same backbone — warm-starting with a different backbone will crash.\n\n"
         )
 
+    class_names_list = list(test_m.get("per_class", {}).keys())
     prompt = IMPROVE_PROMPT.format(
         run_num=state["run_num"],
         target_f1=target_f1,
+        num_classes=len(class_names_list),
+        class_names=", ".join(class_names_list) if class_names_list else "see per-class F1 below",
         config_yaml=_cfg_to_yaml(state["current_config"]),
         macro_f1=macro_f1,
         f1_gap=macro_f1 - target_f1,
