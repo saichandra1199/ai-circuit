@@ -1,35 +1,27 @@
-experiment:
-  name: baseline_efficientnet_b0
-  notes: "Workflow baseline — human-prepared data, agent trains. No advanced augmentations reserved for agent."
+# ══════════════════════════════════════════════════════════════════════════
+# SHARED — edit regardless of which workflow you run
+# ══════════════════════════════════════════════════════════════════════════
 
 agent:
-  max_iterations: 2
-  target_f1: 0.75
-  # Full Agent Workflow only
-  raw_data_dir: ../HM_Data/raw_data
-  max_train_per_class: 50          # null = use all images; set e.g. 500 for faster runs
-
-paths:
-  data_dir: data/sample          
-  class_weights: data/class_weights.json
-  class_mapping: data/class_mapping.json
-  experiment_dir: experiments
+  max_iterations: 2              # train→evaluate→improve cycles
+  target_f1: 0.9                 # agent stops early when this macro F1 is reached
+  llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
 
 model:
-  backbone: convnext_base.fb_in22k_ft_in1k  # IN-22k pretrained; options: any timm model — e.g. efficientnet_b0/b2/b4/b6, efficientnet_v2_s/m, resnet18/34/50/101, convnext_tiny/small/base, vit_small/base_patch16_224, swin_tiny/small, mobilenetv3_large_100, regnety_016/032
-  pretrained: true               # ignored when checkpoint is set
-  checkpoint: null               # path to .pth to warm-start from (agent sets this to best run's best_model.pth)
+  backbone: convnext_base.fb_in22k_ft_in1k  # options: efficientnet_b0/b2/b4, resnet50, convnext_tiny/small/base, vit_base_patch16_224, swin_tiny/small
+  pretrained: true
+  checkpoint: null               # path to .pth to warm-start (agent sets automatically)
   image_size: 224
   dropout: 0.3
 
 training:
   epochs: 20
   batch_size: 32
-  num_workers: 0                 # 0 = safe default for WSL2; increase on Linux/Kaggle
+  num_workers: 0                 # 0 = safe for WSL2; increase on Linux/Kaggle
   mixed_precision: true
   early_stopping_patience: 5
   early_stopping_min_delta: 0.001
-  max_samples_per_class: 100    # null = use full sample dataset
+  max_samples_per_class: 100     # null = use all data
 
 optimizer:
   type: adamw                    # options: adamw, adam, sgd
@@ -46,14 +38,14 @@ scheduler:
 
 loss:
   type: weighted_ce              # options: weighted_ce, focal
-  label_smoothing: 0.0           # active when type=weighted_ce
+  label_smoothing: 0.0
   focal_gamma: 2.0               # only for type=focal
   use_class_weights: true
 
 sampler:
-  use_weighted: true             # WeightedRandomSampler for class imbalance
+  use_weighted: true
 
-# Agent optimization targets — baseline has advanced augmentations off; agent enables/tunes these
+# Baseline augmentations — agent enables/tunes the rest during iterations
 augmentations:
   random_resized_crop: true
   random_horizontal_flip: true
@@ -72,3 +64,26 @@ augmentations:
   randaugment_n: 2
   randaugment_m: 9
   autoaugment: false
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WORKFLOW 1 — Human + Agent  →  python run_human_agent.py
+# Edit paths below — you prepare the dataset, agent handles training.
+# ══════════════════════════════════════════════════════════════════════════
+
+paths:
+  data_dir: data/sample          # folder with train/val/test/<class>/ structure
+  class_weights: data/class_weights.json
+  class_mapping: data/class_mapping.json
+  experiment_dir: experiments
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WORKFLOW 2 — Full Agent  →  python run_full_agent.py
+# Edit below — agent picks classes, prepares data, then trains.
+# ══════════════════════════════════════════════════════════════════════════
+
+data_prep:
+  raw_data_dir: ../HM_Data/raw_data      # path to raw dataset (needs articles.csv + images/)
+  max_train_per_class: 20        # null = use all images; e.g. 500 for faster runs
+  instructions: null             # optional guidance, e.g. "prefer classes with >1000 images, exclude accessories"

@@ -1,8 +1,8 @@
-# Project Architecture — Agentic ML Engineer on H&M Fashion Data
+# Project Architecture — Agentic ML Engineer
 
 ## 1. Overview
 
-5-class H&M fashion image classification used as a benchmark to demonstrate an **autonomous AI ML engineering loop**. The classifier is the substrate; the agent is the artifact.
+Image classification used as a benchmark to demonstrate an **autonomous AI ML engineering loop**. The classifier is the substrate; the agent is the artifact.
 
 **Central hypothesis:** an AI agent given a training framework, a dataset, and an evaluation metric can autonomously discover better hyperparameter configurations through iterative experimentation — the same way a human ML engineer would.
 
@@ -17,109 +17,98 @@ The agent never modifies `train.py`. It only modifies configuration, reads metri
 ### Workflow 1 — Human Data Prep + Agent Trains (`run_human_agent.py`)
 
 ```
-Human:   raw_data/ ──[preprocessing]──► data/full/ + data/sample/
-                                               │
-                                   training_config.yaml (baseline)
-                                               │
-                         ┌─────────────────────▼──────────────────────┐
-                         │            AGENTIC LOOP                     │
-                         │                                             │
-                         │  init_iter ──► train.py ──► evaluate        │
-                         │      ▲                          │           │
-                         │      │                     (continue?)      │
-                         │      │                          │           │
-                         │   improve ◄── notes ◄───────────┘           │
-                         └─────────────────────────────────────────────┘
+Human:   raw data ──[preprocessing]──► data/ (train/val/test structure)
+                                             │
+                              training_config.yaml (baseline)
+                                             │
+                    ┌────────────────────────▼──────────────────────────┐
+                    │                  AGENTIC LOOP                      │
+                    │                                                    │
+                    │  init_iter ──► train.py ──► evaluate               │
+                    │      ▲                          │                  │
+                    │      │                     (continue?)             │
+                    │      │                          │                  │
+                    │   improve ◄── notes ◄───────────┘                  │
+                    └────────────────────────────────────────────────────┘
 ```
 
 Human handles all data decisions: class selection, stratified splitting, class weights, directory structure. Agent's job is purely optimization — receive a working pipeline, improve macro F1 through config changes.
 
-**Intentionally reserved for the agent** (baseline has these OFF):
-- MixUp, CutMix, RandAugment, AutoAugment, RandomErasing
-- Label Smoothing, Focal Loss
-- Higher resolution, different backbone, different scheduler/optimizer
+Edit `training_config.yaml` → **WORKFLOW 1** section (`paths.*`).
 
 ### Workflow 2 — End-to-End Autonomous Agent (`run_full_agent.py`)
 
 ```
 Agent:   raw_data/articles.csv + raw_data/images/
               │
-         [hm_data_prep_agent.py]
+         [data_prep_agent.py]
          LLM decides: which classes, how many, how to split, class weights
+         Writes: data_prep_notes.md (dataset analysis + quality report)
               │
          data/auto/  ←  agent-created structure
-              │
-         auto_training_config.yaml
               │
          Same agentic loop as Workflow 1
          train → evaluate → notes → improve → repeat
 ```
 
-Agent receives only raw CSV + images. No human provides class selection, splits, or metadata. The `hm_data_prep_agent.py` handles everything data-related; then the identical training loop runs.
+Agent receives only raw CSV + images. `data_prep_agent.py` handles everything data-related; then the identical training loop runs.
+
+Edit `training_config.yaml` → **WORKFLOW 2** section (`data_prep.*`). Optional: set `data_prep.instructions` to guide class selection.
 
 ---
 
-## 3. Benchmark
+## 3. Single Config File
 
-All runs are compared using:
+Both workflows share `training_config.yaml`, divided into three sections:
 
-| Metric | Description |
-|--------|-------------|
-| Macro F1 / Accuracy / Precision / Recall | Model quality |
-| Training time | Compute efficiency |
-| Number of experiments | How quickly agent converges |
-| Agent decisions | What changes were made and why |
-| Improvement over baseline | Delta from first run |
-| Human intervention | How much setup was required |
+```yaml
+# ══ SHARED ══
+agent:          # max_iterations, target_f1, llm_model
+model:          # backbone, image_size, dropout, checkpoint
+training:       # epochs, batch_size, early_stopping, mixed_precision
+optimizer:      # type, lr, weight_decay
+scheduler:      # type, min_lr, step_size, gamma
+loss:           # type, label_smoothing, focal_gamma
+sampler:        # use_weighted
+augmentations:  # mixup, cutmix, randaugment, color_jitter, etc.
 
-The benchmark focuses on the **engineering workflow** rather than only final accuracy.
+# ══ WORKFLOW 1 ══
+paths:
+  data_dir, class_mapping, class_weights, experiment_dir
+
+# ══ WORKFLOW 2 ══
+data_prep:
+  raw_data_dir, max_train_per_class, instructions
+```
 
 ---
 
 ## 4. Dataset
 
-**Source:** H&M Personalized Fashion (Kaggle)  
-**Label column:** `product_group_name` from `articles.csv`  
-**Total images:** ~92,286 (after filtering to 5 classes)  
-**Split:** stratified 80/10/10 train/val/test (no leakage — each image in exactly one split)
+Works with any image classification dataset that has:
+- A CSV with a label column and an ID column
+- An `images/` directory with files named `{id}.jpg`
 
-### Why `product_group_name`?
+Default columns: `label_col="product_group_name"`, `id_col="article_id"`. Override in `prepare_data()` for other schemas.
 
-Other candidate columns were rejected:
-- `index_group_name` (5 classes) — too easy, no room for optimization
-- `index_name` (10 classes) — some labels correspond to size ranges, not visually distinguishable
-- `garment_group_name` (21 classes) — fine-grained, high visual overlap (e.g. "Jersey Basic" vs "Jersey Fancy")
-- `product_type_name` (131 classes) — too many, extreme imbalance
-
-`product_group_name` gives 5 visually distinct classes that converge well with transfer learning.
-
-### Classes and Imbalance (~8:1 ratio)
-
-| Class | Train (full) | Train (sample) | Weight |
-|-------|-------------|----------------|--------|
-| Garment Upper body | 34,144 | 500 | 0.43 |
-| Garment Lower body | 15,816 | 500 | 0.93 |
-| Garment Full body | 10,620 | 500 | 1.38 |
-| Accessories | 8,804 | 500 | 1.67 |
-| Shoes | 4,125 | 500 | 3.56 |
-
-**Imbalance strategy:** inverse-frequency class weights applied to both `WeightedCrossEntropy` and `WeightedRandomSampler`. No augmented copies generated on disk — the agent controls augmentation as an optimization lever.
+**Split:** stratified 80/10/10 train/val/test (no leakage).  
+**Imbalance:** inverse-frequency class weights applied to `WeightedCrossEntropy` and `WeightedRandomSampler`.  
+**Capping:** `max_train_per_class` caps training set; val/test are capped at `max_train_per_class // 8` to preserve the 80/10/10 ratio.
 
 ### Data Directories
 
 ```
 data/
-├── sample/         # 500 train / 63 val / 63 test per class (agent default)
-├── full/           # full scale (symlink → processed_data/)
+├── sample/             # prebuilt sample dataset (500 train / ~63 val / ~63 test per class)
 ├── class_weights.json
 └── class_mapping.json
+
+data/auto/              # Workflow 2 output (agent-created)
+├── train/val/test/<class>/
+├── class_mapping_auto.json
+├── class_weights_auto.json
+└── data_prep_notes.md  # LLM-written dataset analysis (quality, imbalance, decisions)
 ```
-
-`data/sample/` created by `utils/create_sample_data.py` with seed 42 — reproducible across runs.
-
-### Image ID Fix
-
-`articles.csv` stores article IDs without leading zeros (e.g. `108775015`), but image filenames use zero-padded 10-digit IDs (`0108775015.jpg`). Always apply `str.zfill(10)` before matching.
 
 ---
 
@@ -127,52 +116,49 @@ data/
 
 Config-driven, fixed code. Agent modifies only the YAML — never the script.
 
-**Model:** `timm.create_model(backbone, pretrained=True, num_classes=5, drop_rate=dropout)`  
-Any timm backbone supported. Warm-starting via `model.checkpoint`.
+**Model:** `timm.create_model(backbone, pretrained=True, num_classes=N, drop_rate=dropout)`  
+Any timm backbone is supported. Warm-starting via `model.checkpoint`.
 
-**Transforms (applied online during training, not during preprocessing):**
+**Transforms (applied online, not baked into images):**
 
 | Split | Transforms |
-|-------|-----------|
-| Train | Resize(256) → RandomResizedCrop(224) → RandomHorizontalFlip → ColorJitter → ToTensor → Normalize(ImageNet) |
-| Val/Test | Resize(256) → CenterCrop(224) → ToTensor → Normalize(ImageNet) |
+|---|---|
+| Train | Resize → RandomResizedCrop → RandomHorizontalFlip → ColorJitter/RandAugment/AutoAugment → ToTensor → Normalize |
+| Val/Test | Resize → CenterCrop → ToTensor → Normalize |
 
-Advanced augmentations (MixUp, CutMix, RandAugment, RandomErasing) start OFF — reserved for agent.
+Advanced augmentations (MixUp, CutMix, RandAugment, RandomErasing) start OFF — reserved for agent to enable.
 
-**Loss:** `weighted_ce` (CrossEntropy + class weights + label smoothing) or `focal` (configurable gamma).
-
-**Optimizer:** AdamW / Adam / SGD from config.
-
-**Scheduler:** CosineAnnealingLR / StepLR / OneCycleLR / ReduceLROnPlateau.
-
+**Loss:** `weighted_ce` (CrossEntropy + class weights + label smoothing) or `focal`.  
+**Optimizer:** AdamW / Adam / SGD.  
+**Scheduler:** CosineAnnealingLR / StepLR / OneCycleLR / ReduceLROnPlateau.  
 **Mixed precision:** `torch.amp.autocast` — auto-disabled on CPU.
 
-**Subsampling:** `max_samples_per_class` caps dataset at runtime without touching disk.
+**Live progress:** tqdm batch-level bar with running loss/acc; each epoch prints loss, val F1, LR, epoch time, and ETA. New best val F1 marked with ★.
 
 ### Output per Run
 
-Each run writes to `experiments/run_N/`:
+Each run writes to `experiments/<session_dir>/run_N/`:
 
 ```
 run_N/
-├── config.yaml       # exact config snapshot for this run
+├── config.yaml       # exact config snapshot — any run is fully reproducible
 ├── best_model.pth    # best checkpoint (by val macro F1)
 ├── metrics.json      # full history + test metrics + confusion matrix
-├── notes.md          # LLM-written analysis (agent runs only)
-└── tensorboard/      # TensorBoard event files
+├── notes.md          # LLM-written analysis (changes made, results, next steps)
+└── tensorboard/
 ```
 
 `metrics.json` schema:
 ```json
 {
   "experiment_name": "agent_run_3",
-  "backbone": "convnext_base",
+  "backbone": "convnext_base.fb_in22k_ft_in1k",
   "epochs_trained": 15,
   "best_val_macro_f1": 0.743,
   "test": {
     "macro_f1": 0.738,
     "accuracy": 0.751,
-    "per_class": { "Shoes": { "f1-score": 0.81, "precision": ..., "recall": ... }, ... },
+    "per_class": { "Shoes": { "f1-score": 0.81, ... }, ... },
     "confusion_matrix": [[...], ...]
   },
   "history": [{ "epoch": 1, "train_loss": ..., "val_macro_f1": ... }, ...]
@@ -181,9 +167,9 @@ run_N/
 
 ---
 
-## 6. Agentic Loop (`agents/hm_training_agent.py`)
+## 6. Agentic Loop (`agents/training_agent.py`)
 
-Built with **LangGraph StateGraph**. LLM: `gpt-4o-mini` via `utils/llm_api.py`.
+Built with **LangGraph StateGraph**. LLM configurable via `agent.llm_model` in config.
 
 ### Graph
 
@@ -196,19 +182,22 @@ init_iter ──► run_train ──► evaluate ──┬──(done)──► 
                                         │
                                      improve
                                         │
-                                   init_iter (loop)
+                                  init_iter (loop)
 ```
 
-### State (`HMTrainingState`)
+### State (`TrainingState`)
 
 | Field | Type | Purpose |
-|-------|------|---------|
+|---|---|---|
+| `session_dir` | str | timestamped dir for this agent session (`experiments/YYYYMMDD_HHMMSS`) |
+| `workflow` | str | `"human+agent"` or `"full_agent"` — recorded in master log |
+| `llm_model` | str | LLM used for all agent calls |
 | `run_num` | int | current iteration counter |
 | `current_config` | dict | config for the next run |
 | `last_diff` | dict | changes applied to reach current_config |
 | `last_metrics` | dict | metrics.json from last run |
-| `notes_history` | list | rolling last-3 notes (LLM memory) |
-| `experiment_log` | list | all runs: F1, accuracy, diff, checkpoint |
+| `notes_history` | list | rolling last-3 notes (LLM context window) |
+| `experiment_log` | list | all runs in this session |
 | `best_macro_f1` | float | best test macro F1 seen |
 | `best_checkpoint_path` | str | path to best_model.pth from best run |
 | `plateau_count` | int | consecutive runs without +0.005 F1 gain |
@@ -216,19 +205,56 @@ init_iter ──► run_train ──► evaluate ──┬──(done)──► 
 
 ### Node Details
 
-**`init_iter`** — increments `run_num`, writes `current_config` to `experiments/run_N/config.yaml`, sets `paths.output_dir`.
+**`init_iter`** — increments `run_num`, creates `<session_dir>/run_N/`, writes config snapshot.
 
-**`run_train`** — `subprocess.run(["python", "train.py", "--config", ...])`. On non-zero exit: sets `done=True` with error.
+**`run_train`** — `subprocess.Popen(["python", "-u", "train.py", ...])` with stdout streamed live. Stderr (tqdm) goes directly to terminal. On non-zero exit: sets `done=True` with error tail.
 
-**`evaluate`** — reads `metrics.json`, detects plateau (`macro_f1 < best + 0.005`), updates `experiment_log.json`. Routes to END if target reached or max iterations hit.
+**`evaluate`** — reads `metrics.json`, detects plateau, appends to session log + master log (`experiments/master_log.json`). Routes to END if target reached or max iterations hit.
 
-**`generate_notes`** — LLM call with `NOTES_PROMPT`. Writes `notes.md`. Maintains rolling 3-note history for next improve call.
+**`generate_notes`** — LLM call with `NOTES_PROMPT`. Writes `notes.md`. Maintains rolling 3-note history.
 
-**`improve`** — LLM call with `IMPROVE_PROMPT`. Returns JSON diff. `_apply_diff()` deep-merges via dot-notation. On plateau ≥ 2: prompt pushes bolder changes (backbone swap, MixUp/CutMix, different loss).
+**`improve`** — LLM call with `IMPROVE_PROMPT`. Returns JSON diff. `_apply_diff()` merges via dot-notation. On plateau ≥ 2: prompt pushes bolder changes (backbone swap, MixUp/CutMix, different loss).
 
 ---
 
-## 7. Config-Diff Design
+## 7. Experiment Logs
+
+### Session log — `<session_dir>/experiment_log.json`
+
+All runs within one agent session. Run sequentially by the agent.
+
+### Master log — `experiments/master_log.json`
+
+Accumulates every run across all sessions ever. Append-only. Use this to compare results across experiments and find the best checkpoint.
+
+```json
+{
+  "session_dir": "experiments/20240709_143022",
+  "timestamp": "2024-07-09 14:30:22",
+  "workflow": "human+agent",
+  "run": 1,
+  "backbone": "convnext_base.fb_in22k_ft_in1k",
+  "macro_f1": 0.7234,
+  "accuracy": 0.7891,
+  "val_macro_f1": 0.7456,
+  "epochs_trained": 15,
+  "target_f1": 0.75,
+  "gap_to_target": -0.0266,
+  "is_best_in_session": true,
+  "diff": { "optimizer.lr": 0.0001, "augmentations.mixup": true },
+  "checkpoint": "experiments/20240709_143022/run_1/best_model.pth",
+  "data": {
+    "data_dir": "data/sample",
+    "classes": ["Accessories", "Garment Lower body", "Garment Upper body", "Shoes"],
+    "split_counts": { "train": {...}, "val": {...}, "test": {...} },
+    "class_weights": { "Accessories": 1.24, "Shoes": 0.91 }
+  }
+}
+```
+
+---
+
+## 8. Config-Diff Design
 
 The agent returns a JSON diff of config changes:
 
@@ -239,86 +265,94 @@ The agent returns a JSON diff of config changes:
 Applied via dot-notation traversal to `current_config`. Each run's exact config is snapshotted in `config.yaml` — any run is fully reproducible.
 
 **Advantages:**
-- **Auditable** — every change logged in `experiment_log.json`, the diff IS the hypothesis
+- **Auditable** — every change logged; the diff IS the hypothesis
 - **Safe** — LLM cannot introduce code bugs, only hyperparameter changes
-- **Reversible** — revert any run by loading its `config.yaml`
+- **Reversible** — rerun any experiment by loading its `config.yaml`
 
 ### Warm-Start Checkpointing
 
-When backbone stays the same, agent can include `model.checkpoint`:
+When backbone stays the same, agent can warm-start:
 ```json
-{ "model.checkpoint": "experiments/run_2/best_model.pth", "optimizer.lr": 0.00005 }
+{ "model.checkpoint": "experiments/.../run_2/best_model.pth", "optimizer.lr": 0.00005 }
 ```
 
 `train.py` loads the checkpoint before training. If architecture changed (incompatible state dict), falls back to ImageNet pretrained with a warning.
 
 ### Plateau Detection
 
-`plateau_count` increments when improvement < 0.005. When ≥ 2: prompt switches to bold-change mode — try different backbone, enable MixUp/CutMix, change loss function.
+`plateau_count` increments when improvement < 0.005. When ≥ 2: prompt switches to bold-change mode — different backbone, MixUp/CutMix, different loss function.
 
 ---
 
-## 8. LLM Prompts (`agents/prompts.py`)
+## 9. LLM Prompts (`agents/prompts.py`)
 
 ### `IMPROVE_PROMPT`
+
 **Input:** full config YAML + run metrics + per-class F1 + last 3 notes + plateau warning or checkpoint hint + enumerated config levers with valid ranges.  
-**Output:** JSON object with 2–5 config changes. LLM is grounded in available levers — cannot invent keys that `train.py` doesn't read.
+**Output:** JSON with 2–5 config changes. LLM is grounded in available levers — cannot invent keys `train.py` doesn't read.
 
 ### `NOTES_PROMPT`
+
 **Input:** run metrics vs target, per-class F1, config diff applied this run.  
 **Output:** 3-section markdown:
 - `## Changes Made` — what changed and why
 - `## Results Analysis` — what worked, what failed, confusion patterns
 - `## Further Improvements` — 2–3 specific next steps
 
-Notes serve dual purpose: human-readable audit trail + LLM memory for the improve step.
+Notes serve dual purpose: human-readable audit trail + LLM context for the improve step.
 
 ---
 
-## 9. Data Prep Agent (`agents/hm_data_prep_agent.py`) — Workflow 2 only
+## 10. Data Prep Agent (`agents/data_prep_agent.py`) — Workflow 2 only
 
 Invoked by `run_full_agent.py` before the training loop.
 
-1. Loads `articles.csv`, counts images per class
-2. LLM selects 3–6 visually distinct classes with ≥500 images each
-3. Filters and stratified-splits the selected classes (80/10/10)
-4. Copies images to `data/auto/{train,val,test}/{class}/`
-5. Writes `class_mapping.json` and `class_weights.json`
-6. Returns paths dict → patched into training config
+1. Loads CSV, counts all classes and total items
+2. LLM selects 3–6 visually distinct classes with ≥500 images — respects `data_prep.instructions` if set
+3. Filters to selected classes, tracks missing images
+4. Stratified 80/10/10 split; caps val/test at `max_train_per_class // 8` to preserve ratio
+5. Copies images to `data/auto/{train,val,test}/{class}/`
+6. Computes inverse-frequency class weights
+7. LLM writes `data_prep_notes.md` — dataset overview, data quality flags (imbalance, missing images), preparation decisions
+8. Returns paths dict → patched into training config
 
 ---
 
-## 10. Files Reference
+## 11. Files Reference
 
 | File | Purpose |
-|------|---------|
+|---|---|
 | `train.py` | Config-driven training pipeline. Fixed — agent never modifies. |
-| `training_config.yaml` | Baseline config. Agent reads as starting point. |
+| `training_config.yaml` | Single config for both workflows. Three labelled sections. |
 | `run_human_agent.py` | Workflow 1 entry point. |
 | `run_full_agent.py` | Workflow 2 entry point (autonomous data prep + training). |
-| `agents/hm_training_agent.py` | LangGraph agent — full loop logic. |
-| `agents/hm_data_prep_agent.py` | LLM-driven data prep for Workflow 2. |
+| `agents/training_agent.py` | LangGraph agent — full loop logic. |
+| `agents/data_prep_agent.py` | LLM-driven data prep for Workflow 2. |
 | `agents/prompts.py` | `IMPROVE_PROMPT` and `NOTES_PROMPT` templates. |
-| `utils/llm_api.py` | OpenAI `gpt-4o-mini` chat wrapper. Reads `OPENAI_API_KEY` from `.env`. |
-| `utils/create_sample_data.py` | Creates `data/sample/` from `processed_data/`. |
-| `data/` | Agent-facing data root: `sample/`, `full/`, metadata JSON. |
-| `experiments/` | All agent run outputs + `experiment_log.json`. |
+| `utils/llm_api.py` | OpenAI chat wrapper. Model configurable via `agent.llm_model`. |
+| `utils/create_sample_data.py` | Creates `data/sample/` from raw data. |
+| `data/` | Agent-facing data root. |
+| `experiments/master_log.json` | Cross-session master record — all runs ever. |
+| `experiments/<session>/` | One timestamped dir per agent run session. |
 
 ---
 
-## 11. Design Decisions
+## 12. Design Decisions
 
 **Why config-diff and not script rewriting?**  
 Config changes cover 95% of the optimization space for image classification. Rewriting `train.py` risks code bugs that obscure the F1 signal. Config-diff keeps the loop clean and auditable.
 
-**Why `gpt-4o-mini`?**  
-The improve step is pattern-matching on metrics and returning a small JSON — not novel reasoning. Fast and cheap for 5–10 sequential iterations.
+**Why configurable LLM model?**  
+`gpt-4o-mini` is fast and cheap for the improve step (pattern-matching on metrics, returning small JSON). `gpt-4o` is better for the notes and data prep analysis. User can tune cost vs quality via `agent.llm_model`.
 
-**Why 500/class for sample data instead of runtime subsampling?**  
-Prebuilt `data/sample/` means `train.py` does no filtering and results are reproducible across runs (same 500 images each time, fixed seed 42).
+**Why timestamped session directories?**  
+Multiple agent runs would overwrite `run_1/`, `run_2/`, etc. Timestamped dirs (`20240709_143022/`) make every session collision-free and self-contained. `master_log.json` provides the cross-session view.
 
 **Why rolling 3-note memory?**  
 Enough context to avoid repeating failed approaches, short enough to stay within token budget. Fixed 3-section note structure makes LLM extraction reliable.
 
 **Why not modify images during preprocessing?**  
 Training pipeline owns all augmentations. This gives the agent full control over augmentation as an optimization lever — it cannot experiment with what's already baked into the images.
+
+**Why stream subprocess stdout instead of capturing?**  
+`capture_output=True` hides all training output until the run finishes. Streaming via `Popen` with `-u` (unbuffered) shows the tqdm batch bar and epoch lines in real time — user sees progress and ETA throughout training.

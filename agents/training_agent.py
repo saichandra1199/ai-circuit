@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
@@ -17,6 +18,9 @@ from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT
 # ── state ─────────────────────────────────────────────────────────────────────
 
 class TrainingState(TypedDict):
+    session_dir: str
+    llm_model: str
+    workflow: str
     run_num: int
     base_config: dict
     current_config: dict
@@ -59,12 +63,20 @@ def _save_log(log: list, path: str = "experiments/experiment_log.json"):
         json.dump(log, f, indent=2)
 
 
+def _append_master_log(entry: dict, path: str = "experiments/master_log.json"):
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(p.read_text()) if p.exists() else []
+    existing.append(entry)
+    p.write_text(json.dumps(existing, indent=2))
+
+
 # ── nodes ─────────────────────────────────────────────────────────────────────
 
 def init_iter(state: TrainingState) -> dict:
     run_num = state["run_num"] + 1
     cfg = copy.deepcopy(state["current_config"])
-    run_dir = Path("experiments") / f"run_{run_num}"
+    run_dir = Path(state["session_dir"]) / f"run_{run_num}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     cfg.setdefault("paths", {})["output_dir"] = str(run_dir)
@@ -84,27 +96,32 @@ def init_iter(state: TrainingState) -> dict:
 
 
 def run_train(state: TrainingState) -> dict:
-    run_dir = Path("experiments") / f"run_{state['run_num']}"
+    run_dir = Path(state["session_dir"]) / f"run_{state['run_num']}"
     config_path = run_dir / "config.yaml"
 
     t0 = time.time()
-    result = subprocess.run(
-        [sys.executable, "train.py", "--config", str(config_path)],
-        capture_output=True, text=True
+    # -u: unbuffered stdout so epoch/batch prints appear immediately
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "train.py", "--config", str(config_path)],
+        stdout=subprocess.PIPE, stderr=None,  # stderr (tqdm) goes direct to terminal
+        text=True, bufsize=1,
     )
+    tail_lines: list[str] = []
+    for line in proc.stdout:
+        print(line, end="", flush=True)
+        tail_lines.append(line)
+    proc.wait()
     elapsed = time.time() - t0
 
-    if result.returncode != 0:
-        print(f"[TRAIN ERROR]\n{result.stderr[-2000:]}")
-        return {"error": result.stderr[-2000:], "done": True}
+    if proc.returncode != 0:
+        return {"error": "".join(tail_lines[-40:]) or "train.py exited non-zero", "done": True}
 
-    print(result.stdout[-1500:])
-    print(f"Training completed in {elapsed:.0f}s")
+    print(f"\nTraining completed in {elapsed:.0f}s")
     return {"error": None}
 
 
 def evaluate(state: TrainingState) -> dict:
-    run_dir = Path("experiments") / f"run_{state['run_num']}"
+    run_dir = Path(state["session_dir"]) / f"run_{state['run_num']}"
     metrics_path = run_dir / "metrics.json"
 
     with open(metrics_path) as f:
@@ -137,7 +154,57 @@ def evaluate(state: TrainingState) -> dict:
         "checkpoint": ckpt_path,
     }
     log = state["experiment_log"] + [log_entry]
-    _save_log(log)
+    _save_log(log, str(Path(state["session_dir"]) / "experiment_log.json"))
+
+    # collect data details from config
+    cfg_paths = state["current_config"].get("paths", {})
+    data_dir = Path(cfg_paths.get("data_dir", ""))
+    mapping_path = cfg_paths.get("class_mapping", "")
+    weights_path = cfg_paths.get("class_weights", "")
+
+    class_mapping = {}
+    if mapping_path and Path(mapping_path).exists():
+        with open(mapping_path) as _f:
+            class_mapping = json.load(_f)
+    class_names = list(class_mapping.values())
+
+    class_weights_data = {}
+    if weights_path and Path(weights_path).exists():
+        with open(weights_path) as _f:
+            class_weights_data = json.load(_f)
+
+    split_counts = {}
+    for split in ("train", "val", "test"):
+        split_dir = data_dir / split
+        if split_dir.exists():
+            split_counts[split] = {
+                cls: len(list((split_dir / cls).glob("*")))
+                for cls in class_names
+                if (split_dir / cls).exists()
+            }
+
+    _append_master_log({
+        "session_dir": state["session_dir"],
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "workflow": state["workflow"],
+        "run": state["run_num"],
+        "backbone": log_entry["backbone"],
+        "macro_f1": round(macro_f1, 4),
+        "accuracy": round(test_m["accuracy"], 4),
+        "val_macro_f1": round(m["best_val_macro_f1"], 4),
+        "epochs_trained": m["epochs_trained"],
+        "target_f1": state["target_f1"],
+        "gap_to_target": round(macro_f1 - state["target_f1"], 4),
+        "is_best_in_session": macro_f1 >= state["best_macro_f1"],
+        "diff": state["last_diff"],
+        "checkpoint": ckpt_path,
+        "data": {
+            "data_dir": str(data_dir),
+            "classes": class_names,
+            "split_counts": split_counts,
+            "class_weights": {k: round(v, 4) for k, v in class_weights_data.items()},
+        },
+    })
 
     done = (macro_f1 >= state["target_f1"]) or (state["run_num"] >= state["max_iterations"])
 
@@ -180,10 +247,10 @@ def generate_notes(state: TrainingState) -> dict:
         changes_instruction=changes_instruction,
     )
 
-    notes = _dial_chat(prompt)
+    notes = _dial_chat(prompt, model=state["llm_model"])
     notes_history = (state["notes_history"] + [notes])[-3:]
 
-    notes_path = Path("experiments") / f"run_{state['run_num']}" / "notes.md"
+    notes_path = Path(state["session_dir"]) / f"run_{state['run_num']}" / "notes.md"
     notes_path.write_text(notes)
     print(f"\n[Notes saved → {notes_path}]")
 
@@ -235,7 +302,7 @@ def improve(state: TrainingState) -> dict:
         plateau_section=plateau_section,
     )
 
-    raw = _dial_chat(prompt)
+    raw = _dial_chat(prompt, model=state["llm_model"])
 
     # strip markdown fences if present
     if "```" in raw:
@@ -279,14 +346,23 @@ def build_graph():
     return g.compile()
 
 
-def run(config_path: str = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75):
+def run(config_path: str = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75, workflow: str = "human+agent"):
     with open(config_path) as f:
         base_cfg = yaml.safe_load(f)
 
     # remove output_dir if present in base config (agent manages it)
     base_cfg.get("paths", {}).pop("output_dir", None)
 
+    session_dir = str(Path("experiments") / datetime.now().strftime("%Y%m%d_%H%M%S"))
+    llm_model = base_cfg.get("agent", {}).get("llm_model", "gpt-4o-mini")
+    print(f"Session dir: {session_dir}")
+    print(f"LLM model:   {llm_model}")
+    print(f"Workflow:    {workflow}")
+
     initial_state: TrainingState = {
+        "session_dir": session_dir,
+        "llm_model": llm_model,
+        "workflow": workflow,
         "run_num": 0,
         "base_config": base_cfg,
         "current_config": copy.deepcopy(base_cfg),
@@ -308,6 +384,7 @@ def run(config_path: str = "training_config.yaml", max_iterations: int = 5, targ
 
     print(f"\n{'='*60}")
     print(f"Agent finished. Best macro F1: {final['best_macro_f1']:.4f}")
-    print(f"Total runs: {final['run_num']}")
-    print(f"Experiment log: experiments/experiment_log.json")
+    print(f"Total runs:     {final['run_num']}")
+    print(f"Session log:    {final['session_dir']}/experiment_log.json")
+    print(f"Master log:     experiments/master_log.json")
     return final

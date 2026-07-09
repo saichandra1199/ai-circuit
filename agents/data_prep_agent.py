@@ -26,6 +26,41 @@ Return ONLY valid JSON — no other text:
 {{"classes": ["Class A", "Class B", ...], "rationale": "one sentence why these classes"}}
 """
 
+_ANALYSIS_PROMPT = """\
+You are an ML engineer writing notes about a dataset you just prepared for image classification.
+
+Raw dataset stats:
+- Total items in CSV: {total_raw}
+- Total unique classes: {total_classes}
+- Items with missing images: {missing_count} ({missing_pct:.1f}%)
+- Items after image filter: {items_with_images}
+
+All available classes (name: count):
+{all_classes}
+
+Selected classes: {selected_classes}
+Selection rationale: {rationale}
+
+Final split counts per class (train | val | test):
+{split_table}
+
+Class weights (inverse frequency for loss weighting):
+{weights_table}
+
+Imbalance ratio (largest / smallest class in train): {imbalance_ratio:.2f}x
+
+Write Markdown notes with EXACTLY these 3 sections (no preamble, no other text):
+
+## Dataset Overview
+Size, class composition, coverage of selected classes vs full dataset.
+
+## Data Quality
+Flag concerns: missing images rate, class imbalance severity, any classes too small, potential label noise risk.
+
+## Preparation Decisions
+Why these classes were selected, what to watch during training based on the distribution.
+"""
+
 
 def _cap(df, label_col, n):
     return (df.groupby(label_col, group_keys=False)
@@ -45,6 +80,8 @@ def prepare_data(
     seed: int = 42,
     label_col: str = "product_group_name",
     id_col: str = "article_id",
+    llm_model: str = "gpt-4o-mini",
+    instructions: str | None = None,
 ) -> dict:
     """
     LLM-driven data prep: decide classes → split → copy images → write metadata.
@@ -56,14 +93,18 @@ def prepare_data(
 
     # 1. load CSV, count per class
     df = pd.read_csv(raw / "articles.csv", dtype=str)
+    total_raw = len(df)
     dist = df[label_col].value_counts()
     dist_str = "\n".join(f"  {k}: {v}" for k, v in dist.items())
     print(f"Label distribution:\n{dist_str}\n")
 
     # 2. LLM decides classes
-    resp = _dial_chat(_CLASS_DECISION_PROMPT.format(
+    prompt = _CLASS_DECISION_PROMPT.format(
         total=len(df), label_col=label_col, distribution=dist_str
-    ))
+    )
+    if instructions:
+        prompt += f"\nAdditional human instructions: {instructions}\n"
+    resp = _dial_chat(prompt, model=llm_model)
     match = re.search(r"\{.*\}", resp, re.DOTALL)
     decision = json.loads(match.group(0))
     classes: list[str] = decision["classes"]
@@ -72,8 +113,10 @@ def prepare_data(
 
     # 3. filter to selected classes + image exists
     df = df[df[label_col].isin(classes)].copy()
+    before_filter = len(df)
     df = df[df[id_col].apply(lambda aid: _img_path(images_dir, aid).exists())]
-    print(f"{len(df)} items with images found for selected classes.")
+    missing_count = before_filter - len(df)
+    print(f"{len(df)} items with images found ({missing_count} missing images).")
 
     # 4. stratified 80/10/10 split
     train_df, temp_df = train_test_split(
@@ -121,12 +164,43 @@ def prepare_data(
     # summary
     print(f"\n{'─'*60}")
     print(f"Data prepared → {out}")
+    split_counts = {}
     for split_name, split_df in splits:
         counts = Counter(split_df[label_col])
+        split_counts[split_name] = counts
         dist_line = "  ".join(f"{cls}={counts.get(cls, 0)}" for cls in class_names)
         print(f"  {split_name:<5}: {len(split_df):>6} imgs  |  {dist_line}")
     print(f"Class weights: { {c: round(w, 3) for c, w in class_weights.items()} }")
     print(f"{'─'*60}\n")
+
+    # LLM analysis notes
+    print("Generating data prep notes...")
+    split_table = "\n".join(
+        f"  {cls:<30} {split_counts['train'].get(cls, 0):>5} | {split_counts['val'].get(cls, 0):>4} | {split_counts['test'].get(cls, 0):>4}"
+        for cls in class_names
+    )
+    weights_table = "\n".join(f"  {cls}: {w:.3f}" for cls, w in class_weights.items())
+    train_counts_vals = [train_counts[c] for c in class_names]
+    imbalance_ratio = max(train_counts_vals) / max(1, min(train_counts_vals))
+
+    notes = _dial_chat(_ANALYSIS_PROMPT.format(
+        total_raw=total_raw,
+        total_classes=len(dist),
+        missing_count=missing_count,
+        missing_pct=100 * missing_count / max(1, before_filter),
+        items_with_images=len(df),
+        all_classes="\n".join(f"  {k}: {v}" for k, v in dist.items()),
+        selected_classes=", ".join(class_names),
+        rationale=decision["rationale"],
+        split_table=split_table,
+        weights_table=weights_table,
+        imbalance_ratio=imbalance_ratio,
+    ), model=llm_model)
+
+    header = f"# Data Prep Notes\n\n**Human instructions:** {instructions or 'none'}\n\n"
+    notes_path = out / "data_prep_notes.md"
+    notes_path.write_text(header + notes)
+    print(f"Data prep notes → {notes_path}\n")
 
     return {
         "data_dir": str(out),

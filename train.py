@@ -1,6 +1,7 @@
 import argparse
 import json
 import shutil
+import sys
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -15,6 +16,7 @@ from torchvision import datasets, transforms
 from sklearn.metrics import classification_report, confusion_matrix
 
 import yaml
+from tqdm import tqdm
 
 
 # ── transforms ────────────────────────────────────────────────────────────────
@@ -153,7 +155,8 @@ def train_epoch(model, loader, optimizer, criterion, scaler, device, cfg, use_am
     use_cutmix = aug.get("cutmix", False)
     total_loss = correct = total = 0
 
-    for imgs, labels in loader:
+    pbar = tqdm(loader, desc="  batches", leave=False, unit="batch", file=sys.stdout)
+    for imgs, labels in pbar:
         imgs, labels = imgs.to(device), labels.to(device)
         ya, yb, lam = None, None, 1.0
 
@@ -181,6 +184,7 @@ def train_epoch(model, loader, optimizer, criterion, scaler, device, cfg, use_am
         total_loss += loss.item() * imgs.size(0)
         correct += (logits.argmax(1) == labels).sum().item()
         total += imgs.size(0)
+        pbar.set_postfix(loss=f"{total_loss/total:.4f}", acc=f"{correct/total:.3f}")
 
     return total_loss / total, correct / total
 
@@ -340,11 +344,13 @@ def main(config_path: str):
                 scheduler.step()
 
         ep_s = time.time() - t_ep
+        elapsed = time.time() - t_start
+        eta_s = elapsed / epoch * (tcfg["epochs"] - epoch)
         lr = optimizer.param_groups[0]["lr"]
         print(f"Ep {epoch:>3}/{tcfg['epochs']} | "
               f"loss={tr_loss:.4f} acc={tr_acc:.4f} | "
               f"val_loss={val_m['loss']:.4f} val_f1={val_m['macro_f1']:.4f} | "
-              f"lr={lr:.2e} | {ep_s:.0f}s")
+              f"lr={lr:.2e} | {ep_s:.0f}s | ETA {eta_s:.0f}s")
 
         writer.add_scalars("Loss",     {"train": tr_loss, "val": val_m["loss"]}, epoch)
         writer.add_scalars("Accuracy", {"train": tr_acc,  "val": val_m["accuracy"]}, epoch)
@@ -362,6 +368,7 @@ def main(config_path: str):
             best_f1 = val_m["macro_f1"]
             no_improve = 0
             torch.save(model.state_dict(), exp_dir / "best_model.pth")
+            print(f"  ★  New best val F1: {best_f1:.4f}")
         else:
             no_improve += 1
             if no_improve >= patience:

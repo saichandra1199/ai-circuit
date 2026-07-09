@@ -20,8 +20,12 @@ if __name__ == "__main__":
     agent = cfg.get("agent", {})
     max_iterations = agent.get("max_iterations", 5)
     target_f1 = agent.get("target_f1", 0.75)
-    raw_data_dir = agent.get("raw_data_dir", "../raw_data")
-    max_train_per_class = agent.get("max_train_per_class", None)
+    llm_model = agent.get("llm_model", "gpt-4o-mini")
+
+    data_prep = cfg.get("data_prep", {})
+    raw_data_dir = data_prep.get("raw_data_dir", "../raw_data")
+    max_train_per_class = data_prep.get("max_train_per_class", None)
+    data_prep_instructions = data_prep.get("instructions", None)
 
     print("=" * 60)
     print("WORKFLOW 2 — Autonomous data prep + training")
@@ -32,6 +36,8 @@ if __name__ == "__main__":
         raw_data_dir=raw_data_dir,
         output_dir="data/auto",
         max_train_per_class=max_train_per_class,
+        llm_model=llm_model,
+        instructions=data_prep_instructions,
     )
 
     # step 2: patch base config with agent-chosen data paths + workflow note
@@ -52,4 +58,5 @@ if __name__ == "__main__":
         config_path=auto_config_path,
         max_iterations=max_iterations,
         target_f1=target_f1,
+        workflow="full_agent",
     )
