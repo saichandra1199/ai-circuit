@@ -1,7 +1,6 @@
 import argparse
 import json
 import shutil
-import sys
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -16,7 +15,6 @@ from torchvision import datasets, transforms
 from sklearn.metrics import classification_report, confusion_matrix
 
 import yaml
-from tqdm import tqdm
 
 
 # ── transforms ────────────────────────────────────────────────────────────────
@@ -155,8 +153,7 @@ def train_epoch(model, loader, optimizer, criterion, scaler, device, cfg, use_am
     use_cutmix = aug.get("cutmix", False)
     total_loss = correct = total = 0
 
-    pbar = tqdm(loader, desc="  batches", leave=False, unit="batch", file=sys.stdout)
-    for imgs, labels in pbar:
+    for imgs, labels in loader:
         imgs, labels = imgs.to(device), labels.to(device)
         ya, yb, lam = None, None, 1.0
 
@@ -184,7 +181,6 @@ def train_epoch(model, loader, optimizer, criterion, scaler, device, cfg, use_am
         total_loss += loss.item() * imgs.size(0)
         correct += (logits.argmax(1) == labels).sum().item()
         total += imgs.size(0)
-        pbar.set_postfix(loss=f"{total_loss/total:.4f}", acc=f"{correct/total:.3f}")
 
     return total_loss / total, correct / total
 
@@ -277,16 +273,9 @@ def main(config_path: str):
         val_ds   = _subsample(val_ds,   max_per_class)
         test_ds  = _subsample(test_ds,  max_per_class)
 
-    print(f"\n{'─'*60}")
-    print(f"Experiment : {exp_name}")
-    print(f"Backbone   : {cfg['model']['backbone']}")
-    print(f"Data dir   : {data_dir}")
-    for split_name, ds in [("train", train_ds), ("val", val_ds), ("test", test_ds)]:
-        lbls = _sample_labels(ds)
-        counts = Counter(lbls)
-        dist = "  ".join(f"{class_names[i]}={counts.get(i, 0)}" for i in range(len(class_names)))
-        print(f"  {split_name:<5}: {len(lbls):>5} imgs  |  {dist}")
-    print(f"{'─'*60}\n")
+    train_n = len(train_ds)
+    val_n   = len(val_ds)
+    print(f"\n[{exp_name}] {cfg['model']['backbone']}  train={train_n}  val={val_n}  epochs={tcfg['epochs']}\n")
 
     if cfg.get("sampler", {}).get("use_weighted", True):
         labels = _sample_labels(train_ds)
@@ -304,7 +293,6 @@ def main(config_path: str):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_amp = tcfg.get("mixed_precision", True) and device.type == "cuda"
-    print(f"Device: {device} | AMP: {use_amp}")
 
     import timm
     model = timm.create_model(cfg["model"]["backbone"], pretrained=True,
@@ -379,9 +367,7 @@ def main(config_path: str):
     model.load_state_dict(torch.load(exp_dir / "best_model.pth", weights_only=True))
     test_m = evaluate(model, test_loader, criterion, device, class_names, use_amp)
 
-    print(f"\nTest | acc={test_m['accuracy']:.4f} macro_f1={test_m['macro_f1']:.4f}")
-    for c in class_names:
-        print(f"  {c:<25} f1={test_m['per_class'][c]['f1-score']:.4f}")
+    print(f"\nTest | acc={test_m['accuracy']:.4f}  macro_f1={test_m['macro_f1']:.4f}")
 
     metrics = {
         "experiment_name": exp_name,
