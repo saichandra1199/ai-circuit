@@ -21,6 +21,8 @@ if __name__ == "__main__":
     max_iterations = agent.get("max_iterations", 5)
     target_f1 = agent.get("target_f1", 0.75)
     llm_model = agent.get("llm_model", "gpt-4o-mini")
+    exp_name = agent.get("experiment_name") or ""
+    exp_suffix = f"_{exp_name.replace(' ', '_')}" if exp_name else ""
 
     data_prep = cfg.get("data_prep", {})
     raw_data_dir = data_prep.get("raw_data_dir", "../raw_data")
@@ -34,7 +36,7 @@ if __name__ == "__main__":
     # step 1: LLM-driven data preparation
     data_paths = prepare_data(
         raw_data_dir=raw_data_dir,
-        output_dir="data/auto",
+        output_dir=f"data/auto{exp_suffix}",
         max_train_per_class=max_train_per_class,
         llm_model=llm_model,
         instructions=data_prep_instructions,
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     cfg.get("paths", {}).pop("output_dir", None)
     cfg.setdefault("experiment", {})["notes"] = "Full Agent — autonomous data prep + training."
 
-    auto_config_path = "data/auto_training_config.yaml"
+    auto_config_path = f"data/auto{exp_suffix}_training_config.yaml"
     with open(auto_config_path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 

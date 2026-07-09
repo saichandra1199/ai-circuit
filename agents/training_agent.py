@@ -355,7 +355,9 @@ def run(config_path: str = "training_config.yaml", max_iterations: int = 5, targ
 
     data_dir = base_cfg.get("paths", {}).get("data_dir", "")
     dataset_name = Path(data_dir).name if data_dir else "unknown"
-    session_dir = str(Path("experiments") / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{dataset_name}")
+    exp_name = base_cfg.get("agent", {}).get("experiment_name") or ""
+    exp_suffix = f"_{exp_name.replace(' ', '_')}" if exp_name else ""
+    session_dir = str(Path("experiments") / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{dataset_name}{exp_suffix}")
     llm_model = base_cfg.get("agent", {}).get("llm_model", "gpt-4o-mini")
     print(f"Session dir: {session_dir}")
     print(f"LLM model:   {llm_model}")

@@ -3,6 +3,7 @@
 # ══════════════════════════════════════════════════════════════════════════
 
 agent:
+  experiment_name: null           # appended to session dir and data dir (e.g. "baseline_convnext")
   max_iterations: 2              # train→evaluate→improve cycles
   target_f1: 0.9                 # agent stops early when this macro F1 is reached
   llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
