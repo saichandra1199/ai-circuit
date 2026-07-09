@@ -353,7 +353,9 @@ def run(config_path: str = "training_config.yaml", max_iterations: int = 5, targ
     # remove output_dir if present in base config (agent manages it)
     base_cfg.get("paths", {}).pop("output_dir", None)
 
-    session_dir = str(Path("experiments") / datetime.now().strftime("%Y%m%d_%H%M%S"))
+    data_dir = base_cfg.get("paths", {}).get("data_dir", "")
+    dataset_name = Path(data_dir).name if data_dir else "unknown"
+    session_dir = str(Path("experiments") / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{dataset_name}")
     llm_model = base_cfg.get("agent", {}).get("llm_model", "gpt-4o-mini")
     print(f"Session dir: {session_dir}")
     print(f"LLM model:   {llm_model}")
