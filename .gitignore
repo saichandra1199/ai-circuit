@@ -15,7 +15,6 @@ uv.lock
 
 # generated data & experiment runs
 data/
-experiments/
 
 # tooling
 .claude/
