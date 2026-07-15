@@ -23,7 +23,7 @@
 16. [Metric: Macro F1 Explained](#16-metric-macro-f1-explained)
 17. [Supported Model Backbones](#17-supported-model-backbones)
 18. [Security & Safety Constraints](#18-security--safety-constraints)
-19. [Jury Q&A](#19-jury-qa)
+19. [FAQ's](#19-FAQ's)
 
 ---
 
@@ -944,7 +944,7 @@ All from the `timm` library. The agent picks from this enumerated list in the pr
 
 ---
 
-## 19. Jury Q&A
+## 19. FAQ's
 
 ### "What is the main innovation here?"
 
