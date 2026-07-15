@@ -1,0 +1,73 @@
+agent:
+  experiment_name: local_ha
+  experiment_dir: experiments
+  max_iterations: 3
+  target_f1: 0.9
+  llm_model: gpt-4o-mini
+model:
+  backbone: mobilenetv3_small_100
+  pretrained: false
+  checkpoint: ./experiments/20260714_163115_local_ha/run_2/best_model.pth
+  image_size: 224
+  dropout: 0.3
+training:
+  epochs: 30
+  batch_size: 16
+  num_workers: 0
+  mixed_precision: false
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.001
+  max_samples_per_class: 50
+optimizer:
+  type: adamw
+  lr: 5.0e-05
+  weight_decay: 0.01
+  momentum: 0.9
+scheduler:
+  type: cosine
+  min_lr: 1.0e-06
+  step_size: 7
+  gamma: 0.1
+  warmup_epochs: 0
+loss:
+  type: weighted_ce
+  label_smoothing: 0.0
+  focal_gamma: 2.0
+  use_class_weights: true
+sampler:
+  use_weighted: true
+augmentations:
+  random_resized_crop: true
+  random_horizontal_flip: true
+  color_jitter: true
+  color_jitter_brightness: 0.2
+  color_jitter_contrast: 0.2
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.05
+  random_erasing: true
+  random_erasing_prob: 0.5
+  mixup: false
+  mixup_alpha: 0.4
+  cutmix: false
+  cutmix_alpha: 1.0
+  randaugment: true
+  randaugment_n: 2
+  randaugment_m: 9
+  autoaugment: false
+paths:
+  data_dir: data/local_sample
+  class_weights: null
+  class_mapping: null
+  output_dir: experiments/20260714_163115_local_ha/run_3
+data_prep:
+  raw_data_dir: ../HM_Data/raw_data
+  max_train_per_class: 50
+  instructions: null
+  force_classes:
+  - Garment_Upper_body
+  - Garment_Lower_body
+  - Garment_Full_body
+  - Accessories
+  - Shoes
+experiment:
+  name: agent_run_3

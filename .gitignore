@@ -3,6 +3,7 @@
 
 # deps / venv
 .venv/
+.python-version
 uv.lock
 
 # python cache
@@ -10,13 +11,13 @@ uv.lock
 *.pyc
 *.pyo
 
-# model checkpoints
-*.pth
-
-# generated data & experiment runs
+# generated data
 data/
+
+# OS
+.DS_Store
 
 # tooling
 .claude/
 .codemie/
-*.pdf
+.vscode/

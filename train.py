@@ -22,9 +22,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
-from sklearn.metrics import classification_report, confusion_matrix
-
 import yaml
+
+from evaluate import evaluate
 
 
 # ── transforms ────────────────────────────────────────────────────────────────
@@ -33,7 +33,19 @@ def build_transforms(cfg):
     aug = cfg.get("augmentations", {})
     sz = cfg["model"]["image_size"]
     resize_sz = int(sz * 256 / 224)
-    mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    if cfg["model"].get("pretrained", True):
+        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    else:
+        import json as _json
+        from pathlib import Path as _Path
+        stats_path = _Path(cfg.get("paths", {}).get("data_dir", "")) / "dataset_stats.json"
+        if stats_path.exists():
+            _s = _json.loads(stats_path.read_text())
+            mean, std = _s["mean"], _s["std"]
+            print(f"[transforms] pretrained=false → using dataset mean/std from {stats_path}")
+        else:
+            mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+            print("[transforms] pretrained=false, no dataset_stats.json → using neutral normalization [0.5/0.5]")
 
     train_t = [transforms.Resize(resize_sz)]
 
@@ -195,36 +207,6 @@ def train_epoch(model, loader, optimizer, criterion, scaler, device, cfg, use_am
     return total_loss / total, correct / total
 
 
-@torch.no_grad()
-def evaluate(model, loader, criterion, device, class_names, use_amp):
-    model.eval()
-    total_loss, all_preds, all_labels = 0.0, [], []
-
-    for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
-        with torch.amp.autocast(device_type=device.type, enabled=use_amp):
-            logits = model(imgs)
-            total_loss += criterion(logits, labels).item() * imgs.size(0)
-        all_preds.extend(logits.argmax(1).cpu().numpy())
-        all_labels.extend(labels.cpu().numpy())
-
-    all_preds = np.array(all_preds)
-    all_labels = np.array(all_labels)
-    labels = list(range(len(class_names)))
-    report = classification_report(all_labels, all_preds, target_names=class_names,
-                                   labels=labels, output_dict=True)
-    cm = confusion_matrix(all_labels, all_preds).tolist()
-
-    return {
-        "loss": total_loss / len(loader.dataset),
-        "accuracy": report["accuracy"],
-        "macro_f1": report["macro avg"]["f1-score"],
-        "weighted_f1": report["weighted avg"]["f1-score"],
-        "per_class": {c: report[c] for c in class_names},
-        "confusion_matrix": cm,
-    }
-
-
 # ── dataset helpers ───────────────────────────────────────────────────────────
 
 def _sample_labels(ds):
@@ -260,12 +242,12 @@ def main(config_path: str):
 
     # experiment dir — agent sets paths.output_dir directly; humans get auto-timestamped path
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    exp_name = cfg.get("experiment", {}).get("name", "experiment")
+    exp_name = cfg.get("agent", {}).get("experiment_name") or cfg.get("experiment", {}).get("name", "experiment")
     out_dir = cfg["paths"].get("output_dir")
     if out_dir:
         exp_dir = Path(out_dir)
     else:
-        exp_dir = Path(cfg["paths"].get("experiment_dir", "experiments")) / f"{exp_name}_{ts}"
+        exp_dir = Path(cfg.get("agent", {}).get("experiment_dir") or cfg["paths"].get("experiment_dir", "experiments")) / f"{exp_name}_{ts}"
     exp_dir.mkdir(parents=True, exist_ok=True)
     dst = exp_dir / "config.yaml"
     if Path(config_path).resolve() != dst.resolve():
@@ -280,8 +262,6 @@ def main(config_path: str):
     max_per_class = tcfg.get("max_samples_per_class")
     if max_per_class:
         train_ds = _subsample(train_ds, max_per_class)
-        val_ds   = _subsample(val_ds,   max_per_class)
-        test_ds  = _subsample(test_ds,  max_per_class)
 
     train_n = len(train_ds)
     val_n   = len(val_ds)

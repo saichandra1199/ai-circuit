@@ -3,8 +3,9 @@
 # ══════════════════════════════════════════════════════════════════════════
 
 agent:
-  experiment_name: test_fa           # appended to session dir and data dir (e.g. "baseline_convnext")
-  max_iterations: 2             # train→evaluate→improve cycles
+  experiment_name: local_fa           # appended to session dir (e.g. "baseline_convnext")
+  experiment_dir: experiments         # where all runs are saved
+  max_iterations: 3            # train→evaluate→improve cycles
   target_f1: 0.9                 # agent stops early when this macro F1 is reached
   llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
 
@@ -24,20 +25,20 @@ model:
   # swin_small        ~50M params  — better than swin_tiny, needs more data
   # vit_base_patch16_224 ~86M params — pure transformer, best with large data (5k+ imgs/class)
   # ───────────────────────────────────────────────────────────────────────
-  backbone: convnext_base.fb_in22k_ft_in1k
-  pretrained: true               # true = start from ImageNet weights (recommended)
-  checkpoint: null               # path to .pth to warm-start (agent sets automatically)
+  backbone: mobilenetv3_small_100   # swap for efficientnet_b2 / convnext_tiny on GPU
+  pretrained: true                     # set true to use ImageNet weights
+  checkpoint: null            # path to .pth to warm-start (agent sets automatically)
   image_size: 224
   dropout: 0.3
 
 training:
-  epochs: 1
-  batch_size: 32
-  num_workers: 0                 # 0 = safe for WSL2; increase on Linux/Kaggle
-  mixed_precision: true
-  early_stopping_patience: 5
+  epochs: 10
+  batch_size: 16                 # increase to 32-64 on GPU
+  num_workers: 0                 # 0 = safe for WSL2/Windows; increase on Linux/Kaggle
+  mixed_precision: false         # set true on GPU for faster training
+  early_stopping_patience: 10
   early_stopping_min_delta: 0.001
-  max_samples_per_class: 15    # null = use all data
+  max_samples_per_class: 50    # null = use all data
 
 optimizer:
   type: adamw                    # options: adamw, adam, sgd
@@ -81,31 +82,29 @@ augmentations:
   randaugment_m: 9
   autoaugment: false
 
-
 # ══════════════════════════════════════════════════════════════════════════
 # HUMAN+AGENT  →  python run_human_agent.py
 # Edit paths below — you prepare the dataset, agent handles training.
 # ══════════════════════════════════════════════════════════════════════════
 
 paths:
-  data_dir: data/human_agent          # folder with train/val/test/<class>/ structure
+  data_dir: data/local_sample          # folder with train/val/test/<class>/ structure
   class_weights: null            # null = auto-derived from data_dir/class_weights.json
   class_mapping: null            # null = auto-derived from data_dir/class_mapping.json
-  experiment_dir: experiments
-
 
 # ══════════════════════════════════════════════════════════════════════════
 # FULL AGENT  →  python run_full_agent.py
 # Edit below — agent picks classes, prepares data, then trains.
+# Agent may modify these during a run (in-memory only — this file is never overwritten).
 # ══════════════════════════════════════════════════════════════════════════
 
 data_prep:
   raw_data_dir: ../HM_Data/raw_data      # path to raw dataset (needs articles.csv + images/)
-  max_train_per_class: 20        # null = use all images; e.g. 500 for faster runs
+  max_train_per_class: 50        # null = use all images; e.g. 500 for faster runs
   instructions: null             # optional guidance (ignored when force_classes is set)
   force_classes:                 # null = let LLM decide; list = skip LLM selection
-    - "Garment Upper body"
-    - "Garment Lower body"
-    - "Garment Full body"
+    - "Garment_Upper_body"
+    - "Garment_Lower_body"
+    - "Garment_Full_body"
     - "Accessories"
     - "Shoes"

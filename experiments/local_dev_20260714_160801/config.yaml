@@ -1,0 +1,109 @@
+# ══════════════════════════════════════════════════════════════════════════
+# SHARED — edit regardless of which workflow you run
+# ══════════════════════════════════════════════════════════════════════════
+
+agent:
+  experiment_name: local_dev           # appended to session dir (e.g. "baseline_convnext")
+  experiment_dir: experiments         # where all runs are saved
+  max_iterations: 3            # train→evaluate→improve cycles
+  target_f1: 0.9                 # agent stops early when this macro F1 is reached
+  llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
+
+model:
+  # ── Backbone options ───────────────────────────────────────────────────
+  # mobilenetv3_small_100  ~2.5M params — lightest option, fastest on CPU, use for prototyping only
+  # mobilenetv3_large_100  ~5.5M params — good accuracy/speed tradeoff, CPU-friendly, small datasets
+  # mobilenetv2_100        ~3.5M params — slightly older, still solid baseline for CPU inference
+  # efficientnet_b0   ~5M params   — fast, good for small datasets (<2k imgs), CPU-friendly
+  # efficientnet_b2   ~9M params   — better accuracy, still fast; good default starting point
+  # efficientnet_b4   ~19M params  — high accuracy, needs 1k+ imgs/class, slow on CPU
+  # resnet50          ~25M params  — reliable baseline, widely understood, easy to debug
+  # convnext_tiny     ~28M params  — modern CNN, outperforms resnet50, needs decent data
+  # convnext_small    ~50M params  — stronger than tiny, good for 2k+ imgs/class
+  # convnext_base     ~88M params  — top CNN accuracy, GPU recommended, needs large dataset
+  # swin_tiny         ~28M params  — transformer, strong on texture/pattern tasks
+  # swin_small        ~50M params  — better than swin_tiny, needs more data
+  # vit_base_patch16_224 ~86M params — pure transformer, best with large data (5k+ imgs/class)
+  # ───────────────────────────────────────────────────────────────────────
+  backbone: mobilenetv3_small_100   # swap for efficientnet_b2 / convnext_tiny on GPU
+  pretrained: true
+  checkpoint: null               # path to .pth to warm-start (agent sets automatically)
+  image_size: 224
+  dropout: 0.3
+
+training:
+  epochs: 20
+  batch_size: 16                 # increase to 32-64 on GPU
+  num_workers: 0                 # 0 = safe for WSL2/Windows; increase on Linux/Kaggle
+  mixed_precision: false         # set true on GPU for faster training
+  early_stopping_patience: 5
+  early_stopping_min_delta: 0.001
+  max_samples_per_class: 50    # null = use all data
+
+optimizer:
+  type: adamw                    # options: adamw, adam, sgd
+  lr: 0.0003
+  weight_decay: 0.01
+  momentum: 0.9                  # only used when type=sgd
+
+scheduler:
+  type: cosine                   # options: cosine, step, onecycle, plateau, none
+  min_lr: 0.000001
+  step_size: 7                   # only for type=step
+  gamma: 0.1                     # only for type=step / plateau
+  warmup_epochs: 0
+
+loss:
+  type: weighted_ce              # options: weighted_ce, focal
+  label_smoothing: 0.0
+  focal_gamma: 2.0               # only for type=focal
+  use_class_weights: true
+
+sampler:
+  use_weighted: true
+
+# Baseline augmentations — agent enables/tunes the rest during iterations
+augmentations:
+  random_resized_crop: true
+  random_horizontal_flip: true
+  color_jitter: true
+  color_jitter_brightness: 0.2
+  color_jitter_contrast: 0.2
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.05
+  random_erasing: false
+  random_erasing_prob: 0.5
+  mixup: false
+  mixup_alpha: 0.4
+  cutmix: false
+  cutmix_alpha: 1.0
+  randaugment: false
+  randaugment_n: 2
+  randaugment_m: 9
+  autoaugment: false
+
+# ══════════════════════════════════════════════════════════════════════════
+# HUMAN+AGENT  →  python run_human_agent.py
+# Edit paths below — you prepare the dataset, agent handles training.
+# ══════════════════════════════════════════════════════════════════════════
+
+paths:
+  data_dir: data/local_sample          # folder with train/val/test/<class>/ structure
+  class_weights: null            # null = auto-derived from data_dir/class_weights.json
+  class_mapping: null            # null = auto-derived from data_dir/class_mapping.json
+
+# ══════════════════════════════════════════════════════════════════════════
+# FULL AGENT  →  python run_full_agent.py
+# Edit below — agent picks classes, prepares data, then trains.
+# ══════════════════════════════════════════════════════════════════════════
+
+data_prep:
+  raw_data_dir: ../HM_Data/raw_data      # path to raw dataset (needs articles.csv + images/)
+  max_train_per_class: 50        # null = use all images; e.g. 500 for faster runs
+  instructions: null             # optional guidance (ignored when force_classes is set)
+  force_classes:                 # null = let LLM decide; list = skip LLM selection
+    - "Garment_Upper_body"
+    - "Garment_Lower_body"
+    - "Garment_Full_body"
+    - "Accessories"
+    - "Shoes"

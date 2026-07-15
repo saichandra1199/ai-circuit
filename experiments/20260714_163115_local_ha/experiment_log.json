@@ -1,0 +1,44 @@
+[
+  {
+    "run": 1,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.6346464646464647,
+    "accuracy": 0.64,
+    "val_macro_f1": 0.6335353535353535,
+    "epochs_trained": 10,
+    "diff": {},
+    "checkpoint": "experiments/20260714_163115_local_ha/run_1/best_model.pth"
+  },
+  {
+    "run": 2,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.714040404040404,
+    "accuracy": 0.72,
+    "val_macro_f1": 0.658961038961039,
+    "epochs_trained": 20,
+    "diff": {
+      "model.checkpoint": "./experiments/20260714_163115_local_ha/run_1/best_model.pth",
+      "training.epochs": 20,
+      "optimizer.lr": 0.0001,
+      "loss.focal_gamma": 3.0,
+      "augmentations.random_erasing": true
+    },
+    "checkpoint": "experiments/20260714_163115_local_ha/run_2/best_model.pth"
+  },
+  {
+    "run": 3,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.6251515151515152,
+    "accuracy": 0.64,
+    "val_macro_f1": 0.5907070707070707,
+    "epochs_trained": 11,
+    "diff": {
+      "model.checkpoint": "./experiments/20260714_163115_local_ha/run_2/best_model.pth",
+      "training.epochs": 30,
+      "optimizer.lr": 5e-05,
+      "loss.focal_gamma": 2.0,
+      "augmentations.randaugment": true
+    },
+    "checkpoint": "experiments/20260714_163115_local_ha/run_3/best_model.pth"
+  }
+]

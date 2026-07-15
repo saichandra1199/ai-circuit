@@ -12,7 +12,7 @@ import yaml
 from langgraph.graph import END, StateGraph
 
 from utils.llm_api import chat as _dial_chat
-from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT
+from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT, make_plateau_section, make_warmstart_section, make_data_prep_section
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
@@ -35,6 +35,9 @@ class TrainingState(TypedDict):
     target_f1: float
     done: bool
     error: str | None
+    data_prep_config: dict         # full_agent only — current data prep settings
+    data_prep_output_dir: str      # where prepare_data writes (for re-prep)
+    needs_data_prep: bool          # if True, init_iter re-preps before training
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -74,8 +77,31 @@ def _append_master_log(entry: dict, path: str = "experiments/master_log.json"):
 # ── nodes ─────────────────────────────────────────────────────────────────────
 
 def init_iter(state: TrainingState) -> dict:
+    updates: dict = {"needs_data_prep": False}
+
+    # re-prep data if agent requested it
+    if state.get("needs_data_prep") and state.get("data_prep_config"):
+        from agents.data_prep_agent import prepare_data
+        dp = state["data_prep_config"]
+        print("\n[Re-preparing data with updated config...]")
+        data_paths = prepare_data(
+            raw_data_dir=dp["raw_data_dir"],
+            output_dir=state.get("data_prep_output_dir", "data/auto"),
+            max_train_per_class=dp.get("max_train_per_class"),
+            llm_model=state["llm_model"],
+            instructions=dp.get("instructions"),
+            force_classes=dp.get("force_classes"),
+        )
+        cfg = copy.deepcopy(state["current_config"])
+        cfg.setdefault("paths", {}).update({
+            "data_dir": data_paths["data_dir"],
+            "class_mapping": data_paths["class_mapping"],
+            "class_weights": data_paths["class_weights"],
+        })
+        updates["current_config"] = cfg
+
     run_num = state["run_num"] + 1
-    cfg = copy.deepcopy(state["current_config"])
+    cfg = copy.deepcopy(updates.get("current_config", state["current_config"]))
     run_dir = Path(state["session_dir"]) / f"run_{run_num}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,7 +118,8 @@ def init_iter(state: TrainingState) -> dict:
         print(f"Changes: {json.dumps(state['last_diff'], indent=2)}")
     print(f"{'='*60}")
 
-    return {"run_num": run_num, "current_config": cfg, "error": None}
+    updates.update({"run_num": run_num, "current_config": cfg, "error": None})
+    return updates
 
 
 def run_train(state: TrainingState) -> dict:
@@ -270,20 +297,11 @@ def improve(state: TrainingState) -> dict:
             notes_section += f"\n--- Run {state['run_num'] - len(state['notes_history']) + i + 1} notes ---\n{note}\n"
         notes_section += "\n"
 
-    plateau_section = ""
-    if state["plateau_count"] >= 2:
-        plateau_section = (
-            f"⚠ PLATEAU DETECTED: F1 has not improved for {state['plateau_count']} consecutive runs. "
-            "Make a bolder change — try a different backbone, enable mixup/cutmix, or change the loss function.\n\n"
-        )
-
-    best_ckpt = state.get("best_checkpoint_path")
-    if best_ckpt and plateau_section == "":
-        plateau_section = (
-            f"Best checkpoint available at: {best_ckpt}\n"
-            "You may warm-start the next run by including \"model.checkpoint\": \"<path>\" in your JSON, "
-            "but ONLY if keeping the same backbone — warm-starting with a different backbone will crash.\n\n"
-        )
+    extra_directives = (
+        make_plateau_section(state["plateau_count"])
+        + make_warmstart_section(state.get("best_checkpoint_path"), state["best_macro_f1"])
+    )
+    data_prep_section = make_data_prep_section(state.get("data_prep_config") or {})
 
     class_names_list = list(test_m.get("per_class", {}).keys())
     prompt = IMPROVE_PROMPT.format(
@@ -299,7 +317,8 @@ def improve(state: TrainingState) -> dict:
         epochs_trained=m["epochs_trained"],
         per_class_f1=_fmt_per_class(test_m),
         notes_history=notes_section,
-        plateau_section=plateau_section,
+        data_prep_section=data_prep_section,
+        extra_directives=extra_directives,
     )
 
     raw = _dial_chat(prompt, model=state["llm_model"])
@@ -317,11 +336,31 @@ def improve(state: TrainingState) -> dict:
 
     print(f"\n[Improve] Proposed changes: {json.dumps(diff, indent=2)}")
 
-    new_config = _apply_diff(state["current_config"], diff)
-    # remove output_dir so init_iter sets it fresh each run
+    # split data_prep.* keys from training keys
+    dp_diff = {k: v for k, v in diff.items() if k.startswith("data_prep.")}
+    train_diff = {k: v for k, v in diff.items() if not k.startswith("data_prep.")}
+
+    new_dp_config = copy.deepcopy(state.get("data_prep_config") or {})
+    needs_data_prep = False
+    if dp_diff:
+        needs_data_prep = True
+        for k, v in dp_diff.items():
+            subkey = k.split(".", 1)[1]
+            new_dp_config[subkey] = v
+
+    new_config = _apply_diff(state["current_config"], train_diff)
+    # if force_classes changed, class mapping changes — must clear checkpoint
+    if "data_prep.force_classes" in dp_diff:
+        new_config.setdefault("model", {})["checkpoint"] = None
+        print("[INFO] force_classes changed — checkpoint cleared (class mapping will change)")
     new_config.get("paths", {}).pop("output_dir", None)
 
-    return {"current_config": new_config, "last_diff": diff}
+    return {
+        "current_config": new_config,
+        "last_diff": diff,
+        "data_prep_config": new_dp_config,
+        "needs_data_prep": needs_data_prep,
+    }
 
 
 # ── graph ─────────────────────────────────────────────────────────────────────
@@ -346,7 +385,59 @@ def build_graph():
     return g.compile()
 
 
-def run(config_path: str | dict = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75, workflow: str = "human+agent"):
+def _eval_baseline(checkpoint_path: str, base_cfg: dict, session_dir: str) -> tuple[dict, list]:
+    """Evaluate user-provided checkpoint as run_0 baseline. Returns (updated_state_fields, experiment_log)."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from evaluate import evaluate_checkpoint
+
+    print(f"\n{'='*60}")
+    print(f"Evaluating baseline checkpoint: {checkpoint_path}")
+    print(f"{'='*60}")
+
+    test_m = evaluate_checkpoint(checkpoint_path, base_cfg, split="test")
+    val_m  = evaluate_checkpoint(checkpoint_path, base_cfg, split="val")
+    macro_f1 = test_m["macro_f1"]
+
+    ckpt = __import__("torch").load(checkpoint_path, map_location="cpu", weights_only=True)
+    backbone = ckpt.get("backbone", base_cfg.get("model", {}).get("backbone", "unknown")) if isinstance(ckpt, dict) else "unknown"
+
+    log_entry = {
+        "run": 0,
+        "backbone": backbone,
+        "macro_f1": macro_f1,
+        "accuracy": test_m["accuracy"],
+        "val_macro_f1": val_m["macro_f1"],
+        "epochs_trained": "baseline",
+        "diff": {},
+        "checkpoint": checkpoint_path,
+        "note": "human-provided baseline",
+    }
+
+    Path(session_dir).mkdir(parents=True, exist_ok=True)
+    experiment_log = [log_entry]
+    _save_log(experiment_log, str(Path(session_dir) / "experiment_log.json"))
+
+    _append_master_log({
+        "session_dir": session_dir,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "workflow": "human+agent",
+        "run": 0,
+        "backbone": backbone,
+        "macro_f1": round(macro_f1, 4),
+        "accuracy": round(test_m["accuracy"], 4),
+        "val_macro_f1": round(val_m["macro_f1"], 4),
+        "epochs_trained": "baseline",
+        "note": "human-provided baseline",
+        "diff": {},
+        "checkpoint": checkpoint_path,
+    })
+
+    print(f"\nBaseline | acc={test_m['accuracy']:.4f}  macro_f1={macro_f1:.4f}")
+    return macro_f1, checkpoint_path, experiment_log
+
+
+def run(config_path: str | dict = "training_config.yaml", max_iterations: int = 5, target_f1: float = 0.75, workflow: str = "human+agent", data_prep_config: dict | None = None, data_prep_output_dir: str = "data/auto"):
     if isinstance(config_path, dict):
         base_cfg = config_path
     else:
@@ -366,6 +457,21 @@ def run(config_path: str | dict = "training_config.yaml", max_iterations: int = 
     print(f"LLM model:   {llm_model}")
     print(f"Workflow:    {workflow}")
 
+    # human+agent: evaluate initial checkpoint as run_0 baseline
+    best_macro_f1 = 0.0
+    best_checkpoint_path = None
+    experiment_log: list = []
+
+    initial_checkpoint = base_cfg.get("agent", {}).get("initial_checkpoint") or base_cfg.get("model", {}).get("initial_checkpoint")
+    if workflow == "human+agent" and initial_checkpoint and Path(initial_checkpoint).exists():
+        best_macro_f1, best_checkpoint_path, experiment_log = _eval_baseline(
+            initial_checkpoint, base_cfg, session_dir
+        )
+        # seed agent to warm-start from this checkpoint
+        base_cfg.setdefault("model", {})["checkpoint"] = initial_checkpoint
+    elif initial_checkpoint:
+        print(f"[WARN] initial_checkpoint not found: {initial_checkpoint}")
+
     initial_state: TrainingState = {
         "session_dir": session_dir,
         "llm_model": llm_model,
@@ -376,14 +482,17 @@ def run(config_path: str | dict = "training_config.yaml", max_iterations: int = 
         "last_diff": {},
         "last_metrics": {},
         "notes_history": [],
-        "experiment_log": [],
-        "best_macro_f1": 0.0,
-        "best_checkpoint_path": None,
+        "experiment_log": experiment_log,
+        "best_macro_f1": best_macro_f1,
+        "best_checkpoint_path": best_checkpoint_path,
         "plateau_count": 0,
         "max_iterations": max_iterations,
         "target_f1": target_f1,
         "done": False,
         "error": None,
+        "data_prep_config": data_prep_config or {},
+        "data_prep_output_dir": data_prep_output_dir,
+        "needs_data_prep": False,
     }
 
     graph = build_graph()

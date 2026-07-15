@@ -1,0 +1,283 @@
+{
+  "experiment_name": "local_fa",
+  "timestamp": "20260715_070336",
+  "backbone": "efficientnet_b0",
+  "total_training_time_s": 1390.65487408638,
+  "epochs_trained": 10,
+  "best_val_macro_f1": 0.6733044733044734,
+  "test": {
+    "loss": 1.740421187877655,
+    "accuracy": 0.6222222222222222,
+    "macro_f1": 0.5482745070845757,
+    "weighted_f1": 0.5903797702424705,
+    "per_class": {
+      "Accessories": {
+        "precision": 0.8571428571428571,
+        "recall": 0.5,
+        "f1-score": 0.631578947368421,
+        "support": 12.0
+      },
+      "Garment_Full_body": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 6.0
+      },
+      "Garment_Lower_body": {
+        "precision": 0.5384615384615384,
+        "recall": 0.7777777777777778,
+        "f1-score": 0.6363636363636364,
+        "support": 9.0
+      },
+      "Garment_Upper_body": {
+        "precision": 0.5714285714285714,
+        "recall": 0.8888888888888888,
+        "f1-score": 0.6956521739130435,
+        "support": 9.0
+      },
+      "Shoes": {
+        "precision": 0.7777777777777778,
+        "recall": 0.7777777777777778,
+        "f1-score": 0.7777777777777778,
+        "support": 9.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        6,
+        1,
+        2,
+        1,
+        2
+      ],
+      [
+        1,
+        0,
+        1,
+        4,
+        0
+      ],
+      [
+        0,
+        1,
+        7,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        8,
+        0
+      ],
+      [
+        0,
+        0,
+        2,
+        0,
+        7
+      ]
+    ]
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 3.839049388885498,
+      "train_acc": 0.24,
+      "val_loss": 2.983247915903727,
+      "val_acc": 0.2708333333333333,
+      "val_macro_f1": 0.2710906298003072,
+      "val_weighted_f1": 0.26459293394777267,
+      "lr": 9.757729755661011e-05,
+      "epoch_time_s": 140.75062084197998
+    },
+    {
+      "epoch": 2,
+      "train_loss": 2.3953122444152832,
+      "train_acc": 0.448,
+      "val_loss": 2.012770652770996,
+      "val_acc": 0.5,
+      "val_macro_f1": 0.46754385964912276,
+      "val_weighted_f1": 0.5010964912280702,
+      "lr": 9.05463412215599e-05,
+      "epoch_time_s": 139.7898449897766
+    },
+    {
+      "epoch": 3,
+      "train_loss": 1.8301185836791993,
+      "train_acc": 0.584,
+      "val_loss": 3.4342703024546304,
+      "val_acc": 0.5208333333333334,
+      "val_macro_f1": 0.48701298701298706,
+      "val_weighted_f1": 0.5404491341991342,
+      "lr": 7.959536998847742e-05,
+      "epoch_time_s": 158.33528685569763
+    },
+    {
+      "epoch": 4,
+      "train_loss": 1.6482441091537476,
+      "train_acc": 0.592,
+      "val_loss": 1.6267349322636921,
+      "val_acc": 0.5833333333333334,
+      "val_macro_f1": 0.5398147542769969,
+      "val_weighted_f1": 0.601032018451927,
+      "lr": 6.57963412215599e-05,
+      "epoch_time_s": 140.33333158493042
+    },
+    {
+      "epoch": 5,
+      "train_loss": 1.3344564743041991,
+      "train_acc": 0.664,
+      "val_loss": 1.438826322555542,
+      "val_acc": 0.5833333333333334,
+      "val_macro_f1": 0.5106540518305224,
+      "val_weighted_f1": 0.5995475113122172,
+      "lr": 5.05e-05,
+      "epoch_time_s": 133.59194111824036
+    },
+    {
+      "epoch": 6,
+      "train_loss": 1.2489755582809448,
+      "train_acc": 0.688,
+      "val_loss": 1.231096665064494,
+      "val_acc": 0.6041666666666666,
+      "val_macro_f1": 0.5291304347826087,
+      "val_weighted_f1": 0.6220108695652173,
+      "lr": 3.5203658778440106e-05,
+      "epoch_time_s": 131.78291821479797
+    },
+    {
+      "epoch": 7,
+      "train_loss": 1.3548855142593383,
+      "train_acc": 0.664,
+      "val_loss": 1.3526517947514851,
+      "val_acc": 0.6458333333333334,
+      "val_macro_f1": 0.5377777777777777,
+      "val_weighted_f1": 0.6328703703703704,
+      "lr": 2.1404630011522586e-05,
+      "epoch_time_s": 139.06049728393555
+    },
+    {
+      "epoch": 8,
+      "train_loss": 1.0848302993774415,
+      "train_acc": 0.724,
+      "val_loss": 1.2504411141077678,
+      "val_acc": 0.6041666666666666,
+      "val_macro_f1": 0.5191111111111112,
+      "val_weighted_f1": 0.6106481481481482,
+      "lr": 1.0453658778440107e-05,
+      "epoch_time_s": 132.4908890724182
+    },
+    {
+      "epoch": 9,
+      "train_loss": 1.123679996728897,
+      "train_acc": 0.696,
+      "val_loss": 1.0675048828125,
+      "val_acc": 0.75,
+      "val_macro_f1": 0.6733044733044734,
+      "val_weighted_f1": 0.7423941798941799,
+      "lr": 3.4227024433899e-06,
+      "epoch_time_s": 136.41790342330933
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.9573994121551513,
+      "train_acc": 0.724,
+      "val_loss": 1.4506500164667766,
+      "val_acc": 0.625,
+      "val_macro_f1": 0.5700233918128654,
+      "val_weighted_f1": 0.6286476608187134,
+      "lr": 1e-06,
+      "epoch_time_s": 132.2701337337494
+    }
+  ],
+  "config": {
+    "agent": {
+      "experiment_name": "local_fa",
+      "experiment_dir": "experiments",
+      "max_iterations": 3,
+      "target_f1": 0.9,
+      "llm_model": "gpt-4o-mini"
+    },
+    "model": {
+      "backbone": "efficientnet_b0",
+      "pretrained": true,
+      "checkpoint": null,
+      "image_size": 224,
+      "dropout": 0.3
+    },
+    "training": {
+      "epochs": 10,
+      "batch_size": 16,
+      "num_workers": 0,
+      "mixed_precision": false,
+      "early_stopping_patience": 10,
+      "early_stopping_min_delta": 0.001,
+      "max_samples_per_class": 50
+    },
+    "optimizer": {
+      "type": "adamw",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "momentum": 0.9
+    },
+    "scheduler": {
+      "type": "cosine",
+      "min_lr": 1e-06,
+      "step_size": 7,
+      "gamma": 0.1,
+      "warmup_epochs": 0
+    },
+    "loss": {
+      "type": "weighted_ce",
+      "label_smoothing": 0.0,
+      "focal_gamma": 2.0,
+      "use_class_weights": true
+    },
+    "sampler": {
+      "use_weighted": true
+    },
+    "augmentations": {
+      "random_resized_crop": true,
+      "random_horizontal_flip": true,
+      "color_jitter": true,
+      "color_jitter_brightness": 0.2,
+      "color_jitter_contrast": 0.2,
+      "color_jitter_saturation": 0.2,
+      "color_jitter_hue": 0.05,
+      "random_erasing": true,
+      "random_erasing_prob": 0.3,
+      "mixup": false,
+      "mixup_alpha": 0.4,
+      "cutmix": false,
+      "cutmix_alpha": 1.0,
+      "randaugment": false,
+      "randaugment_n": 2,
+      "randaugment_m": 9,
+      "autoaugment": false
+    },
+    "paths": {
+      "data_dir": "data/local_fa",
+      "class_weights": "data/local_fa/class_weights.json",
+      "class_mapping": "data/local_fa/class_mapping.json",
+      "output_dir": "experiments/20260715_064118_local_fa/run_2"
+    },
+    "data_prep": {
+      "raw_data_dir": "../HM_Data/raw_data",
+      "max_train_per_class": 50,
+      "instructions": null,
+      "force_classes": [
+        "Garment_Upper_body",
+        "Garment_Lower_body",
+        "Garment_Full_body",
+        "Accessories",
+        "Shoes"
+      ]
+    },
+    "experiment": {
+      "notes": "Full Agent \u2014 autonomous data prep + training.",
+      "name": "agent_run_2"
+    }
+  }
+}
