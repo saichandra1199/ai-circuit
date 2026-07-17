@@ -26,7 +26,7 @@ AXIS = "#c3c2b7"
 TEXT_PRIMARY = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
 WORKFLOW_COLORS = {"human+agent": "#2a78d6", "full_agent": "#1baf7a", "unknown": "#898781"}
-METRIC_COLORS = {"macro_f1": "#2a78d6", "val_macro_f1": "#eda100", "accuracy": "#1baf7a"}
+METRIC_COLORS = {"macro_f1": "#2a78d6", "val_macro_f1": "#eda100"}
 
 
 # ── loaders ───────────────────────────────────────────────────────────────────
@@ -50,6 +50,9 @@ def load_session_log(session_name: str) -> pd.DataFrame:
     entries = json.loads(log_path.read_text())
     df = pd.DataFrame(entries)
     df["run_num"] = pd.to_numeric(df["run"], errors="coerce")
+    for col in ["macro_f1", "val_macro_f1", "weighted_f1"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
     df["run_label"] = df["run_num"].apply(lambda r: f"run_{int(r)}" if pd.notna(r) else "run_unknown")
     return df
 
@@ -77,7 +80,6 @@ def load_user_checkpoint_baseline(session_name: str) -> dict | None:
         return {
             "checkpoint": str(ckpt_path),
             "macro_f1": float(test_m.get("macro_f1", 0.0)),
-            "accuracy": float(test_m.get("accuracy", 0.0)),
         }
     except Exception:
         return None
@@ -209,19 +211,34 @@ def _epoch_perf_chart(history: list) -> alt.Chart:
     )
 
 
-def _best_only_chart(session_df: pd.DataFrame) -> alt.Chart:
+def _best_only_chart(session_df: pd.DataFrame, baseline_f1: float | None = None) -> alt.Chart:
     df = session_df.copy()
     df["run_num"] = pd.to_numeric(df.get("run_num", df["run"]), errors="coerce")
     df = df[df["run_num"].notna()].sort_values("run_num").copy()
     df["best_so_far"] = df["macro_f1"].cummax()
+    if baseline_f1 is not None:
+        df["best_so_far"] = df["best_so_far"].apply(lambda v: max(v, baseline_f1))
     df["run_label"] = df["run_num"].apply(lambda r: f"run_{int(r)}")
     df["is_new_best"] = df["best_so_far"].diff().fillna(df["best_so_far"]).gt(0)
+
+    if baseline_f1 is not None:
+        base_row = pd.DataFrame([
+            {
+                "run_num": -1,
+                "run_label": "baseline",
+                "best_so_far": baseline_f1,
+                "is_new_best": True,
+            }
+        ])
+        df = pd.concat([base_row, df], ignore_index=True)
+
+    x_sort = df["run_label"].tolist()
 
     line = (
         alt.Chart(df)
         .mark_line(strokeWidth=2.2, color="#1baf7a", point=alt.OverlayMarkDef(size=65, filled=True))
         .encode(
-            x=alt.X("run_label:N", title="Run"),
+            x=alt.X("run_label:N", title="Run", sort=x_sort),
             y=alt.Y("best_so_far:Q", title="Best macro F1 so far", scale=alt.Scale(zero=False)),
             tooltip=["run_label", alt.Tooltip("best_so_far:Q", format=".4f")],
         )
@@ -235,9 +252,106 @@ def _best_only_chart(session_df: pd.DataFrame) -> alt.Chart:
             tooltip=["run_label", alt.Tooltip("best_so_far:Q", format=".4f")],
         )
     )
+    overlays = line + highlights
+    best_idx = pd.to_numeric(df["best_so_far"], errors="coerce").idxmax() if not df.empty else None
+    if best_idx is not None and pd.notna(best_idx):
+        best_row = df.loc[best_idx]
+        best_star = (
+            alt.Chart(pd.DataFrame([{"run_label": best_row["run_label"], "best_so_far": best_row["best_so_far"], "star": "★"}]))
+            .mark_text(dy=-20, fontSize=16, fontWeight="bold", color="#1baf7a")
+            .encode(
+                x=alt.X("run_label:N", sort=x_sort),
+                y="best_so_far:Q",
+                text="star:N",
+                tooltip=[alt.Tooltip("best_so_far:Q", title="Best macro F1", format=".4f")],
+            )
+        )
+        overlays = overlays + best_star
     return (
-        (line + highlights)
-        .properties(height=220, title="Best-model progression (new best checkpoints only)")
+        overlays
+        .properties(height=220)
+        .configure_axis(gridColor=GRIDLINE, domainColor=AXIS, labelColor=TEXT_SECONDARY, titleColor=TEXT_PRIMARY)
+        .configure_view(strokeWidth=0)
+    )
+
+
+def _val_selected_test_chart(session_df: pd.DataFrame, baseline_f1: float | None = None) -> alt.Chart:
+    """Show test macro F1 for all runs; highlight checkpoints that become new best on val macro F1."""
+    df = session_df.copy()
+    df["run_num"] = pd.to_numeric(df.get("run_num", df["run"]), errors="coerce")
+    df["val_macro_f1"] = pd.to_numeric(df["val_macro_f1"], errors="coerce")
+    df["macro_f1"] = pd.to_numeric(df["macro_f1"], errors="coerce")
+    df = df[df["run_num"].notna()].sort_values("run_num").copy()
+
+    val_best_so_far = df["val_macro_f1"].cummax()
+    df["is_new_best_val"] = val_best_so_far.diff().fillna(val_best_so_far).gt(0)
+    df["is_new_best_val"] = df["is_new_best_val"].fillna(False).astype(bool)
+    picks = df.copy()
+    picks["run_label"] = picks["run_num"].apply(lambda r: f"run_{int(r)}")
+
+    if baseline_f1 is not None:
+        baseline_row = pd.DataFrame([
+            {
+                "run_num": -1,
+                "run_label": "baseline",
+                "macro_f1": baseline_f1,
+                "val_macro_f1": np.nan,
+                "is_new_best_val": False,
+            }
+        ])
+        picks = pd.concat([baseline_row, picks], ignore_index=True)
+
+    picks["is_new_best_val"] = picks["is_new_best_val"].fillna(False).astype(bool)
+
+    x_sort = picks["run_label"].tolist()
+
+    line = (
+        alt.Chart(picks)
+        .mark_line(strokeWidth=2.1, color=METRIC_COLORS["macro_f1"], point=alt.OverlayMarkDef(size=60, filled=True))
+        .encode(
+            x=alt.X("run_label:N", title="Val-selected checkpoints", sort=x_sort),
+            y=alt.Y("macro_f1:Q", title="Test macro F1", scale=alt.Scale(zero=False)),
+            tooltip=[
+                "run_label",
+                alt.Tooltip("macro_f1:Q", title="test_macro_f1", format=".4f"),
+                alt.Tooltip("val_macro_f1:Q", title="val_macro_f1", format=".4f"),
+            ],
+        )
+    )
+
+    selected_points = (
+        alt.Chart(picks[picks["is_new_best_val"]])
+        .mark_point(size=120, filled=True, color="#1baf7a", stroke="white", strokeWidth=1.2)
+        .encode(
+            x=alt.X("run_label:N", sort=x_sort),
+            y="macro_f1:Q",
+            tooltip=[
+                "run_label",
+                alt.Tooltip("macro_f1:Q", title="test_macro_f1", format=".4f"),
+                alt.Tooltip("val_macro_f1:Q", title="val_macro_f1", format=".4f"),
+            ],
+        )
+    )
+
+    overlays = line + selected_points
+    best_idx = pd.to_numeric(picks["macro_f1"], errors="coerce").idxmax() if not picks.empty else None
+    if best_idx is not None and pd.notna(best_idx):
+        best_row = picks.loc[best_idx]
+        best_star = (
+            alt.Chart(pd.DataFrame([{"run_label": best_row["run_label"], "macro_f1": best_row["macro_f1"], "star": "★"}]))
+            .mark_text(dy=-20, fontSize=16, fontWeight="bold", color=METRIC_COLORS["macro_f1"])
+            .encode(
+                x=alt.X("run_label:N", sort=x_sort),
+                y="macro_f1:Q",
+                text="star:N",
+                tooltip=[alt.Tooltip("macro_f1:Q", title="Best test macro F1", format=".4f")],
+            )
+        )
+        overlays = overlays + best_star
+
+    return (
+        overlays
+        .properties(height=220)
         .configure_axis(gridColor=GRIDLINE, domainColor=AXIS, labelColor=TEXT_SECONDARY, titleColor=TEXT_PRIMARY)
         .configure_view(strokeWidth=0)
     )
@@ -307,17 +421,23 @@ def _f1_trend_chart(plot_df: pd.DataFrame, x_field: str, x_title: str,
             .mark_point(size=55, filled=True, color=baseline_color, stroke="white", strokeWidth=1)
             .encode(x=alt.X("x:O", title=None), y="baseline:Q")
         )
-        baseline_star = (
-            alt.Chart(pd.DataFrame([{"x": bx, "baseline": baseline_f1, "star": "★"}]))
-            .mark_text(dy=-20, fontSize=16, fontWeight="bold", color=baseline_color)
-            .encode(
-                x=alt.X("x:O", title=None),
-                y="baseline:Q",
-                text="star:N",
-                tooltip=[alt.Tooltip("baseline:Q", title="Initial checkpoint F1")],
+        base = (base + baseline_rule + baseline_point + baseline_label).resolve_scale(y="shared")
+
+    if not plot_df.empty:
+        best_idx = pd.to_numeric(plot_df["macro_f1"], errors="coerce").idxmax()
+        if pd.notna(best_idx):
+            best_row = plot_df.loc[best_idx]
+            best_star = (
+                alt.Chart(pd.DataFrame([{"x": best_row[x_field], "y": float(best_row["macro_f1"]), "star": "★"}]))
+                .mark_text(dy=-20, fontSize=16, fontWeight="bold", color=METRIC_COLORS["macro_f1"])
+                .encode(
+                    x=alt.X("x:O", title=None),
+                    y=alt.Y("y:Q"),
+                    text="star:N",
+                    tooltip=[alt.Tooltip("y:Q", title="Best test macro F1", format=".4f")],
+                )
             )
-        )
-        base = (base + baseline_rule + baseline_point + baseline_label + baseline_star).resolve_scale(y="shared")
+            base = (base + best_star).resolve_scale(y="shared")
 
     return (
         base
@@ -340,22 +460,25 @@ def render_run_detail(session_name: str, run_row: pd.Series, is_best: bool):
     with st.expander(f"**{label}**  |  {backbone}  |  test F1 `{f1:.4f}`  |  val F1 `{val_f1:.4f}`  |  {epochs} epochs{star}"):
         metrics = load_run_metrics(session_name, run_num)
 
+        st.markdown(
+            f"<div style='font-size:0.82rem; line-height:1.25; word-break:break-word;'><b>Backbone:</b> {backbone}</div>",
+            unsafe_allow_html=True,
+        )
+
         # ── top metrics strip ──────────────────────────────────────────────
         if metrics:
             t = metrics.get("test", {})
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("Test macro F1", f"{t.get('macro_f1', f1):.4f}")
             m2.metric("Val macro F1", f"{val_f1:.4f}")
-            m3.metric("Accuracy", f"{t.get('accuracy', 0):.4f}")
+            m3.metric("Epochs", f"{metrics.get('epochs_trained', epochs)}")
             m4.metric("Weighted F1", f"{t.get('weighted_f1', 0):.4f}")
             train_s = metrics.get("total_training_time_s")
             m5.metric("Train time", f"{train_s:.0f}s" if train_s else "—")
         else:
-            m1, m2, m3 = st.columns(3)
+            m1, m2 = st.columns(2)
             m1.metric("Test macro F1", f"{f1:.4f}")
             m2.metric("Val macro F1", f"{val_f1:.4f}")
-            if "accuracy" in run_row:
-                m3.metric("Accuracy", f"{run_row['accuracy']:.4f}")
             st.caption("Baseline checkpoint — no training history.")
 
         st.divider()
@@ -541,6 +664,7 @@ with tab_session:
     session_rows = master_df[master_df["session_name"] == selected_session] if not master_df.empty else pd.DataFrame()
     workflow = session_rows["workflow"].iloc[-1] if not session_rows.empty else "unknown"
     target_f1 = session_rows["target_f1"].iloc[-1] if not session_rows.empty and "target_f1" in session_rows.columns else None
+    session_best_val = pd.to_numeric(session_df["val_macro_f1"], errors="coerce").max()
 
     st.subheader(f"`{selected_session}`")
     st.caption(f"Workflow: **{workflow}**" + (f"  |  Target F1: **{target_f1}**" if target_f1 else ""))
@@ -563,11 +687,12 @@ with tab_session:
                   help=f"run_{int(best_run_row.get('run_num', best_run_row['run']))}")
         s3.metric("User checkpoint F1", "—")
         st.info("Baseline star is shown only when the session config includes a valid user checkpoint path.")
-    s4.metric("Best val F1", f"{session_df['val_macro_f1'].max():.4f}")
+    s4.metric("Best val F1", f"{session_best_val:.4f}" if pd.notna(session_best_val) else "—")
     s5.metric("Best backbone", best_run_row.get("backbone", "unknown"))
 
     st.divider()
     st.subheader("F1 trend")
+    st.markdown("**Run F1 Trend**")
 
     plot_df = session_df.sort_values("run_num").reset_index(drop=True).copy()
     if show_all and not master_df.empty:
@@ -598,8 +723,25 @@ with tab_session:
     )
     st.caption("val_macro_f1 = best val F1 during training.  macro_f1 = final test F1.")
 
-    st.altair_chart(_best_only_chart(session_df), use_container_width=True)
+    st.markdown("**Best Macro F1 So Far**")
+    st.altair_chart(
+        _best_only_chart(
+            session_df,
+            baseline_f1=None if baseline_info is None else float(baseline_info["macro_f1"]),
+        ),
+        use_container_width=True,
+    )
     st.caption("This curve moves only when a run beats all previous runs (best checkpoint progression).")
+
+    st.markdown("**Test Macro F1 Across Runs (Val-Selected Highlighted)**")
+    st.altair_chart(
+        _val_selected_test_chart(
+            session_df,
+            baseline_f1=None if baseline_info is None else float(baseline_info["macro_f1"]),
+        ),
+        use_container_width=True,
+    )
+    st.caption("Shows test macro F1 for all runs; green markers indicate runs that set a new best val macro F1.")
 
     st.divider()
     st.subheader("Runs  (click to expand)")

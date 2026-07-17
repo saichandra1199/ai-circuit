@@ -341,8 +341,59 @@ Product-level stratified 80/10/10 split. Class imbalance handled via `WeightedRa
 
 ---
 
-## Why Macro F1?
+## Macro F1: What It Is and Why This Repo Uses It
 
-Dataset is typically imbalanced. Accuracy rewards majority-class prediction. Macro F1 treats every class equally — the right signal for imbalanced multi-class classification.
+### What is Macro F1?
 
-See [docs/Project.md](docs/Project.md) for full architecture details.
+For each class, compute F1 first:
+
+$$
+F1_c = \frac{2 \cdot Precision_c \cdot Recall_c}{Precision_c + Recall_c}
+$$
+
+Then average those class-wise F1 values equally:
+
+$$
+Macro\ F1 = \frac{1}{K}\sum_{c=1}^{K} F1_c
+$$
+
+where $K$ is the number of classes.
+
+Key property: each class contributes equally, regardless of how many samples it has.
+
+### Why Macro F1 is preferred here
+
+- This is a multi-class fashion dataset where class counts can be uneven.
+- Plain accuracy can look good by over-predicting majority classes.
+- Macro F1 penalizes that behavior by forcing the model to perform well across all classes.
+- The agent is meant to improve robust classification quality, not just majority-class hit rate.
+
+### How Macro F1 works in this repo
+
+The code tracks multiple metrics (`accuracy`, `macro_f1`, `weighted_f1`, per-class F1), but Macro F1 is the primary decision signal.
+
+During each training run in `train.py`:
+
+1. Validation metrics are computed every epoch.
+2. The checkpoint `best_model.pth` is saved when **validation macro F1** improves (`best_val_macro_f1`).
+3. Early stopping also follows this best-validation-F1 progression.
+4. After training ends, that best checkpoint is evaluated on **test** split and written to `metrics.json`.
+
+During agent iteration in `agents/training_agent.py`:
+
+1. Run quality is compared using **test macro F1** from `metrics.json`.
+2. The agent's cross-run "best checkpoint so far" is updated from that run-level test macro F1.
+3. `target_f1` stopping logic is checked against run-level test macro F1.
+
+### Which F1 is used where?
+
+- **Choosing best epoch checkpoint inside a run:** `val_macro_f1`
+- **Reporting final run performance (dashboard / logs):** `test.macro_f1`
+- **Choosing best run across iterations:** `test.macro_f1`
+- **Additional context metric:** `weighted_f1` (logged/reported, not the primary selector)
+
+In short:
+- Within-run model selection uses validation Macro F1.
+- Across-run agent comparison uses test Macro F1.
+
+See [Project.md](Project.md) for full architecture details.

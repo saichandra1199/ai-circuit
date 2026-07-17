@@ -4,7 +4,6 @@
 # deps / venv
 .venv/
 .python-version
-uv.lock
 
 # python cache
 **/__pycache__/
