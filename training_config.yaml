@@ -3,9 +3,9 @@
 # ══════════════════════════════════════════════════════════════════════════
 
 agent:
-  experiment_name: local_fa           # appended to session dir (e.g. "baseline_convnext")
+  experiment_name: local_ha1           # appended to session dir (e.g. "baseline_convnext")
   experiment_dir: experiments         # where all runs are saved
-  max_iterations: 3            # train→evaluate→improve cycles
+  max_iterations: 4            # train→evaluate→improve cycles
   target_f1: 0.9                 # agent stops early when this macro F1 is reached
   llm_model: gpt-4o-mini         # options: gpt-4o, gpt-4o-mini, gpt-4-turbo
 
@@ -26,13 +26,13 @@ model:
   # vit_base_patch16_224 ~86M params — pure transformer, best with large data (5k+ imgs/class)
   # ───────────────────────────────────────────────────────────────────────
   backbone: mobilenetv3_small_100   # swap for efficientnet_b2 / convnext_tiny on GPU
-  pretrained: true                     # set true to use ImageNet weights
-  checkpoint: null            # path to .pth to warm-start (agent sets automatically)
+  pretrained: false                     # set true to use ImageNet weights
+  checkpoint: ./experiments/20260714_163115_local_ha/run_2/best_model.pth            # path to .pth to warm-start (agent sets automatically)
   image_size: 224
   dropout: 0.3
 
 training:
-  epochs: 10
+  epochs: 5
   batch_size: 16                 # increase to 32-64 on GPU
   num_workers: 0                 # 0 = safe for WSL2/Windows; increase on Linux/Kaggle
   mixed_precision: false         # set true on GPU for faster training
@@ -88,7 +88,7 @@ augmentations:
 # ══════════════════════════════════════════════════════════════════════════
 
 paths:
-  data_dir: data/local_sample          # folder with train/val/test/<class>/ structure
+  data_dir: data/local_sample      # folder with train/val/test/<class>/ structure
   class_weights: null            # null = auto-derived from data_dir/class_weights.json
   class_mapping: null            # null = auto-derived from data_dir/class_mapping.json
 

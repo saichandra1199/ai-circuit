@@ -12,7 +12,7 @@ import yaml
 from langgraph.graph import END, StateGraph
 
 from utils.llm_api import chat as _dial_chat
-from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT, make_plateau_section, make_warmstart_section, make_data_prep_section
+from agents.prompts import IMPROVE_PROMPT, NOTES_PROMPT
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
@@ -72,6 +72,44 @@ def _append_master_log(entry: dict, path: str = "experiments/master_log.json"):
     existing = json.loads(p.read_text()) if p.exists() else []
     existing.append(entry)
     p.write_text(json.dumps(existing, indent=2))
+
+
+def make_plateau_section(plateau_count: int) -> str:
+    if plateau_count < 2:
+        return ""
+    return (
+        f"⚠ PLATEAU DETECTED: F1 has not improved for {plateau_count} consecutive runs. "
+        "Make a bolder change — try a different backbone, enable mixup/cutmix, or change the loss function.\n\n"
+    )
+
+
+def make_warmstart_section(best_ckpt: str | None, best_f1: float) -> str:
+    if not best_ckpt:
+        return ""
+    return (
+        f"Best checkpoint so far: {best_ckpt} (macro F1 = {best_f1:.4f})\n"
+        "This is the strongest checkpoint seen so far (user baseline or agent-produced). "
+        "Warm-start policy: when this checkpoint is better than the initial user checkpoint, prefer THIS checkpoint for subsequent runs. "
+        "Include exactly this path via \"model.checkpoint\": \"<best_ckpt_path>\" unless you intentionally reset training. "
+        "Do not keep pointing to an older/weaker user checkpoint once a better run checkpoint exists. "
+        "You may still omit it / set null only when you intentionally want to train from scratch. "
+        "If switching backbone, you MUST set checkpoint to null (architecture mismatch will crash).\n\n"
+    )
+
+
+def make_data_prep_section(dp_config: dict) -> str:
+    if not dp_config:
+        return ""
+    classes = dp_config.get("force_classes")
+    classes_str = json.dumps(classes) if classes else "null (LLM decides)"
+    return (
+        "Current data prep config (full_agent — READ-ONLY during iterative training):\n"
+        f"  data_prep.max_train_per_class: {dp_config.get('max_train_per_class', 'null')}\n"
+        f"  data_prep.force_classes: {classes_str}\n"
+        "Dataset is locked once training has started.\n"
+        "Do NOT propose any data_prep.* keys in this run.\n"
+        "Keep data prep fixed and tune only model/training pipeline settings.\n\n"
+    )
 
 
 # ── nodes ─────────────────────────────────────────────────────────────────────

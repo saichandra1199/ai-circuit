@@ -1,0 +1,227 @@
+{
+  "experiment_name": "local_ha1",
+  "timestamp": "20260717_115336",
+  "backbone": "mobilenetv3_small_100",
+  "total_training_time_s": 336.222439289093,
+  "epochs_trained": 5,
+  "best_val_macro_f1": 0.5338888888888889,
+  "test": {
+    "loss": 1.9268428087234497,
+    "accuracy": 0.6,
+    "macro_f1": 0.5825396825396825,
+    "weighted_f1": 0.5825396825396826,
+    "per_class": {
+      "Accessories": {
+        "precision": 0.6666666666666666,
+        "recall": 0.4,
+        "f1-score": 0.5,
+        "support": 5.0
+      },
+      "Garment_Full_body": {
+        "precision": 0.4444444444444444,
+        "recall": 0.8,
+        "f1-score": 0.5714285714285714,
+        "support": 5.0
+      },
+      "Garment_Lower_body": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1-score": 0.8888888888888888,
+        "support": 5.0
+      },
+      "Garment_Upper_body": {
+        "precision": 0.5,
+        "recall": 0.2,
+        "f1-score": 0.2857142857142857,
+        "support": 5.0
+      },
+      "Shoes": {
+        "precision": 0.5714285714285714,
+        "recall": 0.8,
+        "f1-score": 0.6666666666666666,
+        "support": 5.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        2,
+        1,
+        0,
+        1,
+        1
+      ],
+      [
+        0,
+        4,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        1,
+        4,
+        0,
+        0
+      ],
+      [
+        0,
+        3,
+        0,
+        1,
+        1
+      ],
+      [
+        1,
+        0,
+        0,
+        0,
+        4
+      ]
+    ]
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.2502606225013733,
+      "train_acc": 0.695,
+      "val_loss": 3.741753578186035,
+      "val_acc": 0.44,
+      "val_macro_f1": 0.4015873015873016,
+      "val_weighted_f1": 0.4015873015873016,
+      "lr": 0.0002714480406590546,
+      "epoch_time_s": 67.56519412994385
+    },
+    {
+      "epoch": 2,
+      "train_loss": 1.2523005843162536,
+      "train_acc": 0.73,
+      "val_loss": 2.7343666553497314,
+      "val_acc": 0.56,
+      "val_macro_f1": 0.5338888888888889,
+      "val_weighted_f1": 0.5338888888888889,
+      "lr": 0.00019669804065905458,
+      "epoch_time_s": 67.31385922431946
+    },
+    {
+      "epoch": 3,
+      "train_loss": 1.1286388754844665,
+      "train_acc": 0.705,
+      "val_loss": 2.789422035217285,
+      "val_acc": 0.52,
+      "val_macro_f1": 0.45999999999999996,
+      "val_weighted_f1": 0.46,
+      "lr": 0.00010430195934094532,
+      "epoch_time_s": 61.78603720664978
+    },
+    {
+      "epoch": 4,
+      "train_loss": 1.0511821937561034,
+      "train_acc": 0.71,
+      "val_loss": 2.579916000366211,
+      "val_acc": 0.48,
+      "val_macro_f1": 0.4772960372960373,
+      "val_weighted_f1": 0.4772960372960373,
+      "lr": 2.955195934094536e-05,
+      "epoch_time_s": 60.56568765640259
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.9333738207817077,
+      "train_acc": 0.67,
+      "val_loss": 2.317049503326416,
+      "val_acc": 0.52,
+      "val_macro_f1": 0.516161616161616,
+      "val_weighted_f1": 0.5161616161616162,
+      "lr": 1e-06,
+      "epoch_time_s": 76.91744208335876
+    }
+  ],
+  "config": {
+    "agent": {
+      "experiment_name": "local_ha1",
+      "experiment_dir": "experiments",
+      "max_iterations": 4,
+      "target_f1": 0.9,
+      "llm_model": "gpt-4o-mini"
+    },
+    "model": {
+      "backbone": "mobilenetv3_small_100",
+      "pretrained": false,
+      "checkpoint": "./experiments/20260714_163115_local_ha/run_2/best_model.pth",
+      "image_size": 224,
+      "dropout": 0.3
+    },
+    "training": {
+      "epochs": 5,
+      "batch_size": 16,
+      "num_workers": 0,
+      "mixed_precision": false,
+      "early_stopping_patience": 10,
+      "early_stopping_min_delta": 0.001,
+      "max_samples_per_class": 50
+    },
+    "optimizer": {
+      "type": "adamw",
+      "lr": 0.0003,
+      "weight_decay": 0.01,
+      "momentum": 0.9
+    },
+    "scheduler": {
+      "type": "cosine",
+      "min_lr": 1e-06,
+      "step_size": 7,
+      "gamma": 0.1,
+      "warmup_epochs": 0
+    },
+    "loss": {
+      "type": "weighted_ce",
+      "label_smoothing": 0.0,
+      "focal_gamma": 2.0,
+      "use_class_weights": true
+    },
+    "sampler": {
+      "use_weighted": true
+    },
+    "augmentations": {
+      "random_resized_crop": true,
+      "random_horizontal_flip": true,
+      "color_jitter": true,
+      "color_jitter_brightness": 0.2,
+      "color_jitter_contrast": 0.2,
+      "color_jitter_saturation": 0.2,
+      "color_jitter_hue": 0.05,
+      "random_erasing": false,
+      "random_erasing_prob": 0.5,
+      "mixup": false,
+      "mixup_alpha": 0.4,
+      "cutmix": false,
+      "cutmix_alpha": 1.0,
+      "randaugment": false,
+      "randaugment_n": 2,
+      "randaugment_m": 9,
+      "autoaugment": false
+    },
+    "paths": {
+      "data_dir": "data/local_sample",
+      "class_weights": null,
+      "class_mapping": null,
+      "output_dir": "experiments/20260717_115333_local_ha1/run_1"
+    },
+    "data_prep": {
+      "raw_data_dir": "../HM_Data/raw_data",
+      "max_train_per_class": 50,
+      "instructions": null,
+      "force_classes": [
+        "Garment_Upper_body",
+        "Garment_Lower_body",
+        "Garment_Full_body",
+        "Accessories",
+        "Shoes"
+      ]
+    },
+    "experiment": {
+      "name": "agent_run_1"
+    }
+  }
+}

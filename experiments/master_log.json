@@ -268,5 +268,127 @@
         "Shoes": 0.9565
       }
     }
+  },
+  {
+    "session_dir": "experiments/20260717_115333_local_ha1",
+    "timestamp": "2026-07-17 11:59:14",
+    "workflow": "human+agent",
+    "run": 1,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5825,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.5339,
+    "epochs_trained": 5,
+    "target_f1": 0.9,
+    "gap_to_target": -0.3175,
+    "is_best_in_session": true,
+    "diff": {},
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_1/best_model.pth",
+    "data": {
+      "data_dir": "data/local_sample",
+      "classes": [],
+      "split_counts": {
+        "train": {},
+        "val": {},
+        "test": {}
+      },
+      "class_weights": {}
+    }
+  },
+  {
+    "session_dir": "experiments/20260717_115333_local_ha1",
+    "timestamp": "2026-07-17 12:12:48",
+    "workflow": "human+agent",
+    "run": 2,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5978,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.5802,
+    "epochs_trained": 10,
+    "target_f1": 0.9,
+    "gap_to_target": -0.3022,
+    "is_best_in_session": true,
+    "diff": {
+      "model.pretrained": true,
+      "training.epochs": 10,
+      "optimizer.lr": 0.0001,
+      "loss.use_class_weights": true,
+      "augmentations.random_erasing": true
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_2/best_model.pth",
+    "data": {
+      "data_dir": "data/local_sample",
+      "classes": [],
+      "split_counts": {
+        "train": {},
+        "val": {},
+        "test": {}
+      },
+      "class_weights": {}
+    }
+  },
+  {
+    "session_dir": "experiments/20260717_115333_local_ha1",
+    "timestamp": "2026-07-17 12:26:31",
+    "workflow": "human+agent",
+    "run": 3,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5856,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.6416,
+    "epochs_trained": 11,
+    "target_f1": 0.9,
+    "gap_to_target": -0.3144,
+    "is_best_in_session": false,
+    "diff": {
+      "training.epochs": 20,
+      "optimizer.lr": 5e-05,
+      "loss.label_smoothing": 0.1,
+      "augmentations.randaugment": true,
+      "augmentations.randaugment_n": 3
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_3/best_model.pth",
+    "data": {
+      "data_dir": "data/local_sample",
+      "classes": [],
+      "split_counts": {
+        "train": {},
+        "val": {},
+        "test": {}
+      },
+      "class_weights": {}
+    }
+  },
+  {
+    "session_dir": "experiments/20260717_115333_local_ha1",
+    "timestamp": "2026-07-17 12:40:19",
+    "workflow": "human+agent",
+    "run": 4,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.6105,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.6227,
+    "epochs_trained": 11,
+    "target_f1": 0.9,
+    "gap_to_target": -0.2895,
+    "is_best_in_session": true,
+    "diff": {
+      "model.checkpoint": "./experiments/20260717_115333_local_ha1/run_2/best_model.pth",
+      "training.epochs": 30,
+      "optimizer.lr": 3e-05,
+      "loss.use_class_weights": true,
+      "augmentations.random_erasing_prob": 0.6
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_4/best_model.pth",
+    "data": {
+      "data_dir": "data/local_sample",
+      "classes": [],
+      "split_counts": {
+        "train": {},
+        "val": {},
+        "test": {}
+      },
+      "class_weights": {}
+    }
   }
 ]

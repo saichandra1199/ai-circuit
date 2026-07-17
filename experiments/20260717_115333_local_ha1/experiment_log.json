@@ -1,0 +1,60 @@
+[
+  {
+    "run": 1,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5825396825396825,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.5338888888888889,
+    "epochs_trained": 5,
+    "diff": {},
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_1/best_model.pth"
+  },
+  {
+    "run": 2,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5977777777777777,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.5802197802197803,
+    "epochs_trained": 10,
+    "diff": {
+      "model.pretrained": true,
+      "training.epochs": 10,
+      "optimizer.lr": 0.0001,
+      "loss.use_class_weights": true,
+      "augmentations.random_erasing": true
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_2/best_model.pth"
+  },
+  {
+    "run": 3,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.5856277056277056,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.6415584415584416,
+    "epochs_trained": 11,
+    "diff": {
+      "training.epochs": 20,
+      "optimizer.lr": 5e-05,
+      "loss.label_smoothing": 0.1,
+      "augmentations.randaugment": true,
+      "augmentations.randaugment_n": 3
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_3/best_model.pth"
+  },
+  {
+    "run": 4,
+    "backbone": "mobilenetv3_small_100",
+    "macro_f1": 0.6105050505050504,
+    "accuracy": 0.6,
+    "val_macro_f1": 0.6227350427350429,
+    "epochs_trained": 11,
+    "diff": {
+      "model.checkpoint": "./experiments/20260717_115333_local_ha1/run_2/best_model.pth",
+      "training.epochs": 30,
+      "optimizer.lr": 3e-05,
+      "loss.use_class_weights": true,
+      "augmentations.random_erasing_prob": 0.6
+    },
+    "checkpoint": "experiments/20260717_115333_local_ha1/run_4/best_model.pth"
+  }
+]

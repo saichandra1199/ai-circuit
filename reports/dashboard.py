@@ -49,8 +49,38 @@ def load_session_log(session_name: str) -> pd.DataFrame:
         return pd.DataFrame()
     entries = json.loads(log_path.read_text())
     df = pd.DataFrame(entries)
-    df["run_label"] = df["run"].apply(lambda r: f"run_{r}" + (" (baseline)" if r == 0 else ""))
+    df["run_num"] = pd.to_numeric(df["run"], errors="coerce")
+    df["run_label"] = df["run_num"].apply(lambda r: f"run_{int(r)}" if pd.notna(r) else "run_unknown")
     return df
+
+
+@st.cache_data(ttl=60)
+def load_user_checkpoint_baseline(session_name: str) -> dict | None:
+    """Baseline is the user-provided checkpoint in config (not run_0)."""
+    run_cfg = load_run_config(session_name, 1)
+    if not run_cfg:
+        return None
+
+    model_cfg = run_cfg.get("model", {})
+    agent_cfg = run_cfg.get("agent", {})
+    checkpoint = model_cfg.get("checkpoint") or agent_cfg.get("initial_checkpoint")
+    if not checkpoint:
+        return None
+
+    ckpt_path = Path(checkpoint)
+    if not ckpt_path.exists():
+        return None
+
+    try:
+        from evaluate import evaluate_checkpoint
+        test_m = evaluate_checkpoint(str(ckpt_path), run_cfg, split="test")
+        return {
+            "checkpoint": str(ckpt_path),
+            "macro_f1": float(test_m.get("macro_f1", 0.0)),
+            "accuracy": float(test_m.get("accuracy", 0.0)),
+        }
+    except Exception:
+        return None
 
 
 def load_run_metrics(session_name: str, run_num: int) -> dict | None:
@@ -154,8 +184,70 @@ def _epoch_chart(history: list) -> alt.Chart:
     )
 
 
+def _epoch_perf_chart(history: list) -> alt.Chart:
+    hist_df = pd.DataFrame(history)
+    metric_map = {
+        "train_acc": "train_acc",
+        "val_acc": "val_acc",
+        "val_macro_f1": "val_macro_f1",
+    }
+    cols = [c for c in metric_map if c in hist_df.columns]
+    perf_long = hist_df.melt(id_vars="epoch", value_vars=cols, var_name="metric", value_name="value")
+    perf_long["label"] = perf_long["metric"].map(metric_map)
+    return (
+        alt.Chart(perf_long)
+        .mark_line(strokeWidth=1.8, point=True)
+        .encode(
+            x=alt.X("epoch:O", title="Epoch"),
+            y=alt.Y("value:Q", scale=alt.Scale(domain=[0, 1]), title="Score"),
+            color=alt.Color("label:N", legend=alt.Legend(title=None)),
+            tooltip=["epoch", "label", alt.Tooltip("value:Q", format=".4f")],
+        )
+        .properties(height=180, title="Epoch performance")
+        .configure_axis(gridColor=GRIDLINE, domainColor=AXIS, labelColor=TEXT_SECONDARY)
+        .configure_view(strokeWidth=0)
+    )
+
+
+def _best_only_chart(session_df: pd.DataFrame) -> alt.Chart:
+    df = session_df.copy()
+    df["run_num"] = pd.to_numeric(df.get("run_num", df["run"]), errors="coerce")
+    df = df[df["run_num"].notna()].sort_values("run_num").copy()
+    df["best_so_far"] = df["macro_f1"].cummax()
+    df["run_label"] = df["run_num"].apply(lambda r: f"run_{int(r)}")
+    df["is_new_best"] = df["best_so_far"].diff().fillna(df["best_so_far"]).gt(0)
+
+    line = (
+        alt.Chart(df)
+        .mark_line(strokeWidth=2.2, color="#1baf7a", point=alt.OverlayMarkDef(size=65, filled=True))
+        .encode(
+            x=alt.X("run_label:N", title="Run"),
+            y=alt.Y("best_so_far:Q", title="Best macro F1 so far", scale=alt.Scale(zero=False)),
+            tooltip=["run_label", alt.Tooltip("best_so_far:Q", format=".4f")],
+        )
+    )
+    highlights = (
+        alt.Chart(df[df["is_new_best"]])
+        .mark_point(size=95, filled=True, color="#1baf7a", stroke="white", strokeWidth=1.2)
+        .encode(
+            x="run_label:N",
+            y="best_so_far:Q",
+            tooltip=["run_label", alt.Tooltip("best_so_far:Q", format=".4f")],
+        )
+    )
+    return (
+        (line + highlights)
+        .properties(height=220, title="Best-model progression (new best checkpoints only)")
+        .configure_axis(gridColor=GRIDLINE, domainColor=AXIS, labelColor=TEXT_SECONDARY, titleColor=TEXT_PRIMARY)
+        .configure_view(strokeWidth=0)
+    )
+
+
 def _f1_trend_chart(plot_df: pd.DataFrame, x_field: str, x_title: str,
-                    show_all: bool, target_f1: float | None) -> alt.Chart:
+                    show_all: bool, target_f1: float | None,
+                    baseline_f1: float | None = None,
+                    baseline_x: str | int | None = None,
+                    x_sort: list | None = None) -> alt.Chart:
     trend_long = plot_df.melt(
         id_vars=[x_field] + (["session_name"] if show_all else []),
         value_vars=["macro_f1", "val_macro_f1"],
@@ -172,7 +264,7 @@ def _f1_trend_chart(plot_df: pd.DataFrame, x_field: str, x_title: str,
         alt.Chart(trend_long)
         .mark_line(strokeWidth=2, point=alt.OverlayMarkDef(size=60, filled=True))
         .encode(
-            x=alt.X(f"{x_field}:O", title=x_title),
+            x=alt.X(f"{x_field}:O", title=x_title, sort=x_sort),
             y=alt.Y("value:Q", title="F1", scale=alt.Scale(zero=False)),
             color=color_enc,
             strokeDash=alt.StrokeDash("metric:N") if show_all else alt.Undefined,
@@ -190,6 +282,43 @@ def _f1_trend_chart(plot_df: pd.DataFrame, x_field: str, x_title: str,
         base = (chart + rule).resolve_scale(y="shared")
     else:
         base = chart
+
+    if baseline_f1 is not None:
+        last_x = plot_df[x_field].iloc[-1]
+        bx = baseline_x if baseline_x is not None else last_x
+        baseline_color = "#d97706"
+        baseline_rule = (
+            alt.Chart(pd.DataFrame([{"baseline": baseline_f1}]))
+            .mark_rule(strokeDash=[2, 2], color=baseline_color, strokeWidth=1.6)
+            .encode(y="baseline:Q", tooltip=[alt.Tooltip("baseline:Q", title="Initial checkpoint F1")])
+        )
+        baseline_label = (
+            alt.Chart(pd.DataFrame([{"x": bx, "baseline": baseline_f1, "label": "baseline"}]))
+            .mark_text(align="left", dx=6, dy=-8, fontWeight="bold", color=baseline_color)
+            .encode(
+                x=alt.X("x:O", title=None),
+                y="baseline:Q",
+                text="label:N",
+                tooltip=[alt.Tooltip("baseline:Q", title="Initial checkpoint F1")],
+            )
+        )
+        baseline_point = (
+            alt.Chart(pd.DataFrame([{"x": bx, "baseline": baseline_f1}]))
+            .mark_point(size=55, filled=True, color=baseline_color, stroke="white", strokeWidth=1)
+            .encode(x=alt.X("x:O", title=None), y="baseline:Q")
+        )
+        baseline_star = (
+            alt.Chart(pd.DataFrame([{"x": bx, "baseline": baseline_f1, "star": "★"}]))
+            .mark_text(dy=-20, fontSize=16, fontWeight="bold", color=baseline_color)
+            .encode(
+                x=alt.X("x:O", title=None),
+                y="baseline:Q",
+                text="star:N",
+                tooltip=[alt.Tooltip("baseline:Q", title="Initial checkpoint F1")],
+            )
+        )
+        base = (base + baseline_rule + baseline_point + baseline_label + baseline_star).resolve_scale(y="shared")
+
     return (
         base
         .configure_axis(gridColor=GRIDLINE, domainColor=AXIS, labelColor=TEXT_SECONDARY, titleColor=TEXT_PRIMARY)
@@ -200,7 +329,7 @@ def _f1_trend_chart(plot_df: pd.DataFrame, x_field: str, x_title: str,
 # ── run detail renderer ───────────────────────────────────────────────────────
 
 def render_run_detail(session_name: str, run_row: pd.Series, is_best: bool):
-    run_num = int(run_row["run"])
+    run_num = int(run_row.get("run_num", run_row["run"]))
     f1 = run_row.get("macro_f1", 0)
     val_f1 = run_row.get("val_macro_f1", 0)
     backbone = run_row.get("backbone", "unknown")
@@ -273,7 +402,11 @@ def render_run_detail(session_name: str, run_row: pd.Series, is_best: bool):
         # ── epoch history ──────────────────────────────────────────────────
         if metrics and metrics.get("history"):
             st.markdown("**Epoch history**")
-            st.altair_chart(_epoch_chart(metrics["history"]), use_container_width=True)
+            h1, h2 = st.columns(2)
+            with h1:
+                st.altair_chart(_epoch_chart(metrics["history"]), use_container_width=True)
+            with h2:
+                st.altair_chart(_epoch_perf_chart(metrics["history"]), use_container_width=True)
             st.divider()
 
         # ── config diff + notes ────────────────────────────────────────────
@@ -412,38 +545,68 @@ with tab_session:
     st.subheader(f"`{selected_session}`")
     st.caption(f"Workflow: **{workflow}**" + (f"  |  Target F1: **{target_f1}**" if target_f1 else ""))
 
+    baseline_info = load_user_checkpoint_baseline(selected_session)
     best_run_row = session_df.loc[session_df["macro_f1"].idxmax()]
-    s1, s2, s3, s4 = st.columns(4)
+    s1, s2, s3, s4, s5 = st.columns(5)
     s1.metric("Runs", len(session_df))
-    s2.metric("Best macro F1", f"{best_run_row['macro_f1']:.4f}",
-              help=f"run_{int(best_run_row['run'])}")
-    s3.metric("Best val F1", f"{session_df['val_macro_f1'].max():.4f}")
-    s4.metric("Best backbone", best_run_row.get("backbone", "unknown"))
+    if baseline_info is not None:
+        s2.metric("User checkpoint F1", f"{baseline_info['macro_f1']:.4f}",
+                  help=baseline_info["checkpoint"])
+        s3.metric(
+            "Best macro F1",
+            f"{best_run_row['macro_f1']:.4f}",
+            delta=f"{best_run_row['macro_f1'] - baseline_info['macro_f1']:+.4f} vs user checkpoint",
+            help=f"run_{int(best_run_row['run'])}",
+        )
+    else:
+        s2.metric("Best macro F1", f"{best_run_row['macro_f1']:.4f}",
+                  help=f"run_{int(best_run_row.get('run_num', best_run_row['run']))}")
+        s3.metric("User checkpoint F1", "—")
+        st.info("Baseline star is shown only when the session config includes a valid user checkpoint path.")
+    s4.metric("Best val F1", f"{session_df['val_macro_f1'].max():.4f}")
+    s5.metric("Best backbone", best_run_row.get("backbone", "unknown"))
 
     st.divider()
     st.subheader("F1 trend")
 
-    plot_df = session_df.copy()
+    plot_df = session_df.sort_values("run_num").reset_index(drop=True).copy()
     if show_all and not master_df.empty:
         plot_df = master_df[["run", "macro_f1", "val_macro_f1", "session_name"]].copy()
         plot_df["run_order"] = range(len(plot_df))
         x_field, x_title = "run_order", "Global run order"
+        x_sort = None
+        baseline_x = None
     else:
         plot_df["run_order"] = plot_df.index
-        x_field, x_title = "run_order", "Run"
+        plot_df["run_label"] = plot_df["run_num"].apply(lambda r: f"run_{int(r)}")
+        x_field, x_title = "run_label", "Run"
+        x_sort = (["baseline"] if baseline_info is not None else []) + plot_df["run_label"].tolist()
+        baseline_x = "baseline" if baseline_info is not None else None
 
     st.altair_chart(
-        _f1_trend_chart(plot_df, x_field, x_title, show_all, target_f1),
+        _f1_trend_chart(
+            plot_df,
+            x_field,
+            x_title,
+            show_all,
+            target_f1,
+            baseline_f1=None if baseline_info is None else float(baseline_info["macro_f1"]),
+            baseline_x=baseline_x,
+            x_sort=x_sort,
+        ),
         use_container_width=True,
     )
     st.caption("val_macro_f1 = best val F1 during training.  macro_f1 = final test F1.")
 
+    st.altair_chart(_best_only_chart(session_df), use_container_width=True)
+    st.caption("This curve moves only when a run beats all previous runs (best checkpoint progression).")
+
     st.divider()
     st.subheader("Runs  (click to expand)")
 
-    best_run_num = int(best_run_row["run"])
-    for _, row in session_df.sort_values("run").iterrows():
-        render_run_detail(selected_session, row, is_best=(int(row["run"]) == best_run_num))
+    best_run_num = int(best_run_row.get("run_num", best_run_row["run"]))
+    for _, row in session_df.sort_values("run_num").iterrows():
+        render_run_detail(selected_session, row, is_best=(int(row.get("run_num", row["run"])) == best_run_num))
 
 # ── compare tab ───────────────────────────────────────────────────────────────
 

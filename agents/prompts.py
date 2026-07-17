@@ -1,5 +1,4 @@
-"""All LLM prompt strings and section builders for the AI Circuit agents."""
-import json
+"""All LLM prompt strings for the AI Circuit agents."""
 
 
 # ── training agent ────────────────────────────────────────────────────────────
@@ -29,10 +28,11 @@ Per-class F1:
 {extra_directives}\
 Available config keys you may change (dot-notation):
 
-DATA PREP (full_agent only — changing triggers data re-prep before next training run)
-- data_prep.max_train_per_class: integer or null (increase to get more data per class)
-- data_prep.force_classes: JSON list of class name strings, or null (let LLM re-select)
-  WARNING: changing force_classes will clear model.checkpoint (class mapping changes)
+DATA PREP (full_agent only)
+- Dataset is LOCKED once training iterations start.
+- Do NOT propose any data_prep.* changes during iterative runs.
+- Keep data_prep.max_train_per_class and data_prep.force_classes unchanged.
+- Do not return data_prep.* keys in your JSON output.
 
 
 MODEL
@@ -41,6 +41,11 @@ MODEL
 - model.dropout: 0.0–0.5
 - model.image_size: 224, 256  (changing this also scales all crop/resize ops automatically)
 - model.checkpoint: path to .pth file for warm-starting — use ONLY if keeping the same backbone, else set to null
+
+CHECKPOINT PRIORITY POLICY
+- If a newer checkpoint from agent runs has higher macro F1 than the initial user-provided checkpoint, prefer the newer better checkpoint for subsequent runs.
+- Do NOT keep reverting to an older/weaker user checkpoint once a stronger checkpoint exists.
+- Only set model.checkpoint to null when intentionally restarting from scratch or when changing backbone.
 
 OPTIMIZER
 - optimizer.type: adamw, adam, sgd
@@ -120,41 +125,6 @@ Analyze macro F1 and per-class results — what worked, what failed, key insight
 ## Further Improvements
 2–3 specific, actionable steps to improve macro F1 toward {target_f1}.
 """
-
-
-def make_plateau_section(plateau_count: int) -> str:
-    if plateau_count < 2:
-        return ""
-    return (
-        f"⚠ PLATEAU DETECTED: F1 has not improved for {plateau_count} consecutive runs. "
-        "Make a bolder change — try a different backbone, enable mixup/cutmix, or change the loss function.\n\n"
-    )
-
-
-def make_warmstart_section(best_ckpt: str | None, best_f1: float) -> str:
-    if not best_ckpt:
-        return ""
-    return (
-        f"Best checkpoint so far: {best_ckpt} (macro F1 = {best_f1:.4f})\n"
-        "This is the best model seen — either user-provided or best agent run. "
-        "You may warm-start from it by including \"model.checkpoint\": \"<path>\" in your JSON, "
-        "or omit it / set null to train from scratch. "
-        "If switching backbone, you MUST set checkpoint to null (architecture mismatch will crash).\n\n"
-    )
-
-
-def make_data_prep_section(dp_config: dict) -> str:
-    if not dp_config:
-        return ""
-    classes = dp_config.get("force_classes")
-    classes_str = json.dumps(classes) if classes else "null (LLM decides)"
-    return (
-        "Current data prep config (full_agent — you may change these):\n"
-        f"  data_prep.max_train_per_class: {dp_config.get('max_train_per_class', 'null')}\n"
-        f"  data_prep.force_classes: {classes_str}\n"
-        "Changing any data_prep.* key triggers data re-prep before next run.\n"
-        "Changing force_classes will automatically clear model.checkpoint.\n\n"
-    )
 
 
 # ── data prep agent ───────────────────────────────────────────────────────────
